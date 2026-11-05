@@ -1,0 +1,66 @@
+{
+  "links": {
+    "itb-book": {
+      "prerequisites": [],
+      "next": [
+        "ch-01"
+      ],
+      "related": [
+        "ch-05"
+      ]
+    },
+    "ch-01": {
+      "prerequisites": [],
+      "next": [
+        "ch-02"
+      ],
+      "related": [
+        "ch-05"
+      ]
+    },
+    "ch-02": {
+      "prerequisites": [
+        "ch-01"
+      ],
+      "next": [
+        "ch-03"
+      ],
+      "related": [
+        "ch-04"
+      ]
+    },
+    "ch-03": {
+      "prerequisites": [
+        "ch-02"
+      ],
+      "next": [
+        "ch-04"
+      ],
+      "related": [
+        "ch-01"
+      ]
+    },
+    "ch-04": {
+      "prerequisites": [
+        "ch-03"
+      ],
+      "next": [
+        "ch-05"
+      ],
+      "related": [
+        "ch-02"
+      ]
+    },
+    "ch-05": {
+      "prerequisites": [
+        "ch-01",
+        "ch-03",
+        "ch-04"
+      ],
+      "next": [],
+      "related": [
+        "ch-02"
+      ]
+    }
+  }
+}

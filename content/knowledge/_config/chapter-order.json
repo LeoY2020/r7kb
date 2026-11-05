@@ -1,0 +1,41 @@
+{
+  "root": "itb-index",
+  "chapters": [
+    {
+      "slug": "itb-book",
+      "title": "智能电子书",
+      "order": 1,
+      "parent": "itb-index"
+    },
+    {
+      "slug": "ch-01",
+      "title": "认识智能电子书",
+      "order": 1,
+      "parent": "itb-book"
+    },
+    {
+      "slug": "ch-02",
+      "title": "学习图谱与概念依赖",
+      "order": 2,
+      "parent": "itb-book"
+    },
+    {
+      "slug": "ch-03",
+      "title": "章节设计与布鲁姆分类",
+      "order": 3,
+      "parent": "itb-book"
+    },
+    {
+      "slug": "ch-04",
+      "title": "MicroSim 交互模拟",
+      "order": 4,
+      "parent": "itb-book"
+    },
+    {
+      "slug": "ch-05",
+      "title": "质检与发布",
+      "order": 5,
+      "parent": "itb-book"
+    }
+  ]
+}

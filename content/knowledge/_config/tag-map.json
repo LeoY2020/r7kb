@@ -1,0 +1,54 @@
+{
+  "tags": {
+    "智能电子书": {
+      "color": "#0071e3",
+      "chapters": [
+        "itb-book",
+        "ch-01"
+      ]
+    },
+    "学习图谱": {
+      "color": "#2f9e8f",
+      "chapters": [
+        "ch-02"
+      ]
+    },
+    "概念依赖": {
+      "color": "#5b8def",
+      "chapters": [
+        "ch-02",
+        "ch-03"
+      ]
+    },
+    "布鲁姆分类": {
+      "color": "#8b5cf6",
+      "chapters": [
+        "ch-03"
+      ]
+    },
+    "章节设计": {
+      "color": "#e0823d",
+      "chapters": [
+        "ch-03"
+      ]
+    },
+    "MicroSim": {
+      "color": "#d94f7a",
+      "chapters": [
+        "ch-04"
+      ]
+    },
+    "质检发布": {
+      "color": "#0f9d58",
+      "chapters": [
+        "ch-05"
+      ]
+    },
+    "术语规范": {
+      "color": "#6b7280",
+      "chapters": [
+        "ch-01"
+      ]
+    }
+  }
+}
