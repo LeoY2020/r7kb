@@ -89,10 +89,12 @@ export function MicroShowcase() {
           liked={liked}
           count={likeCount}
           showCount
+          icon="star"
           size={22}
-          likedColor="rgb(var(--rose))"
+          likedColor="#eab308"
           idleColor="rgb(var(--ink-faint))"
           pillColor="rgb(var(--surface))"
+          textColor="rgb(var(--ink))"
           onChange={(next, count) => {
             setLiked(next);
             setLikeCount(count);
