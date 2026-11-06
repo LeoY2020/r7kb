@@ -1,13 +1,18 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import dynamic from 'next/dynamic';
 import RubberSegment from '@/components/reactbits-micro/RubberSegment';
 import SquishSwitch from '@/components/reactbits-micro/SquishSwitch';
 import PulseHeart from '@/components/reactbits-micro/PulseHeart';
 import SpringCheck from '@/components/reactbits-micro/SpringCheck';
-import WarmTooltip from '@/components/reactbits-micro/WarmTooltip';
 import StatusMark from '@/components/reactbits-micro/StatusMark';
 import LatticeLoader from '@/components/reactbits-micro/LatticeLoader';
+
+// 官方 WarmTooltip 在渲染期读取 window.innerWidth，仅能在客户端渲染
+const WarmTooltip = dynamic(() => import('@/components/reactbits-micro/WarmTooltip'), {
+  ssr: false,
+});
 
 type DemoCardProps = {
   label: string;

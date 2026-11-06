@@ -1,52 +1,23 @@
 'use client';
 
-import React, { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { FavouriteIcon, StarIcon, ThumbsUpIcon } from '@hugeicons/core-free-icons';
 
-export type PulseHeartIcon = 'heart' | 'star' | 'thumb';
-
-export interface PulseHeartProps {
-  liked?: boolean;
-  defaultLiked?: boolean;
-  count?: number;
-  onChange?: (liked: boolean, count: number) => void;
-  showCount?: boolean;
-  icon?: PulseHeartIcon | ReactNode;
-  idleOutline?: boolean;
-  size?: number;
-  corner?: number;
-  likedColor?: string;
-  idleColor?: string;
-  pillColor?: string;
-  textColor?: string;
-  duration?: number;
-  dotSize?: number;
-  overshoot?: number;
-  beat?: number;
-  rollDuration?: number;
-  disabled?: boolean;
-  label?: string;
-  className?: string;
-}
-
-type IconData = readonly (readonly [string, { readonly [key: string]: string | number }])[];
-type Roll = { a: string; b: string; at: number; up: boolean };
-type Cell = { ch: string } | { top: string; bottom: string };
+import './PulseHeart.css';
 
 const OUT = 0.4;
-const ICONS: Record<PulseHeartIcon, IconData> = { heart: FavouriteIcon, star: StarIcon, thumb: ThumbsUpIcon };
+const ICONS = { heart: FavouriteIcon, star: StarIcon, thumb: ThumbsUpIcon };
 
-const back = (k: number, c: number) => {
+const back = (k, c) => {
   const u = k - 1;
   return 1 + (c + 1) * u ** 3 + c * u ** 2;
 };
-const swellOf = (t: number, c: number) =>
-  t <= 0 ? 0 : t < OUT ? 1 - (1 - t / OUT) ** 3 : 1 - back((t - OUT) / (1 - OUT), c);
-const format = (n: number) => new Intl.NumberFormat().format(n);
+const swellOf = (t, c) => (t <= 0 ? 0 : t < OUT ? 1 - (1 - t / OUT) ** 3 : 1 - back((t - OUT) / (1 - OUT), c));
+const format = n => new Intl.NumberFormat().format(n);
 const reducedMotion = () =>
   typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
-const PulseHeart: React.FC<PulseHeartProps> = ({
+export default function PulseHeart({
   liked: likedProp,
   defaultLiked = false,
   count = 0,
@@ -68,21 +39,21 @@ const PulseHeart: React.FC<PulseHeartProps> = ({
   disabled = false,
   label = 'Like',
   className = ''
-}) => {
+}) {
   const controlled = likedProp !== undefined;
   const [inner, setInner] = useState(defaultLiked);
   const [total, setTotal] = useState(count);
   const liked = controlled ? likedProp : inner;
   const [shown, setShown] = useState({ liked, count });
-  const [roll, setRoll] = useState<Roll | null>(null);
+  const [roll, setRoll] = useState(null);
 
-  const rootRef = useRef<HTMLButtonElement>(null);
-  const pillRef = useRef<HTMLSpanElement>(null);
-  const heartRef = useRef<HTMLSpanElement>(null);
-  const glyphRef = useRef<SVGGElement>(null);
-  const rollRef = useRef<HTMLSpanElement>(null);
+  const rootRef = useRef(null);
+  const pillRef = useRef(null);
+  const heartRef = useRef(null);
+  const glyphRef = useRef(null);
+  const rollRef = useRef(null);
   const raf = useRef(0);
-  const rollTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const rollTimer = useRef(0);
   const viaPointer = useRef(false);
   const shownRef = useRef(shown);
   const logical = useRef({ liked, count: total });
@@ -126,7 +97,7 @@ const PulseHeart: React.FC<PulseHeartProps> = ({
     []
   );
 
-  const startRoll = (from: number, to: number) => {
+  const startRoll = (from, to) => {
     if (from === to) return;
     const a = format(from);
     const b = format(to);
@@ -136,7 +107,7 @@ const PulseHeart: React.FC<PulseHeartProps> = ({
     rollTimer.current = setTimeout(() => setRoll(null), cfg.current.rollDuration);
   };
 
-  const run = (nextLiked: boolean, nextCount: number) => {
+  const run = (nextLiked, nextCount) => {
     const root = rootRef.current;
     const heart = heartRef.current;
     const pill = pillRef.current;
@@ -146,7 +117,7 @@ const PulseHeart: React.FC<PulseHeartProps> = ({
     let swapped = false;
     let prev = 0;
     const t0 = performance.now();
-    const tick = (now: number) => {
+    const tick = now => {
       const { duration: D, dotSize: dot, overshoot: c, beat: B } = cfg.current;
       const t = Math.min(1, (now - t0) / D);
       const step = prev ? now - prev : 1000 / 60;
@@ -181,7 +152,7 @@ const PulseHeart: React.FC<PulseHeartProps> = ({
     raf.current = requestAnimationFrame(tick);
   };
 
-  const handlePointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
+  const handlePointerDown = e => {
     if (e.button !== 0 || disabled) return;
     viaPointer.current = true;
     if (!reducedMotion() && rootRef.current) rootRef.current.dataset.pressed = '';
@@ -196,7 +167,7 @@ const PulseHeart: React.FC<PulseHeartProps> = ({
   const handleKeyDown = () => {
     viaPointer.current = false;
   };
-  const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+  const handleClick = e => {
     if (disabled || raf.current) return;
     const pointer = viaPointer.current && e.detail !== 0;
     viaPointer.current = false;
@@ -209,9 +180,9 @@ const PulseHeart: React.FC<PulseHeartProps> = ({
     else if (rootRef.current) rootRef.current.dataset.instant = '';
   };
 
-  const paths = typeof icon === 'string' ? ICONS[icon as PulseHeartIcon] || ICONS.heart : null;
+  const paths = typeof icon === 'string' ? ICONS[icon] || ICONS.heart : null;
   const text = format(shown.count);
-  const cells: Cell[] = roll
+  const cells = roll
     ? roll.at === -1
       ? [{ top: roll.up ? roll.a : roll.b, bottom: roll.up ? roll.b : roll.a }]
       : [...roll.b].map((ch, i) =>
@@ -228,20 +199,17 @@ const PulseHeart: React.FC<PulseHeartProps> = ({
       data-liked={String(shown.liked)}
       data-solid={idleOutline ? undefined : ''}
       data-no-count={showCount ? undefined : ''}
-      className={`group relative m-0 inline-flex cursor-pointer touch-manipulation select-none items-center justify-center border-0 bg-transparent p-0 outline-none [font-family:inherit] [color:var(--ph-text)] rounded-[var(--ph-corner)] [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [transition:transform_160ms_var(--ph-ease-out)] data-[pressed]:[transform:scale(0.97)] focus-visible:outline-offset-[3px] focus-visible:[outline:2px_solid_color-mix(in_srgb,var(--ph-liked)_60%,transparent)] disabled:cursor-default disabled:opacity-[0.55] motion-reduce:transition-none [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11${className ? ` ${className}` : ''}`}
-      style={
-        {
-          '--ph-size': `${size}px`,
-          '--ph-corner': `${corner}px`,
-          '--ph-pill': pillColor,
-          '--ph-idle': idleColor,
-          '--ph-liked': likedColor,
-          '--ph-text': textColor,
-          '--ph-roll': `${rollDuration}ms`,
-          '--ph-stroke': `${(1.5 * size) / 24}px`,
-          '--ph-ease-out': 'cubic-bezier(0.23, 1, 0.32, 1)'
-        } as CSSProperties
-      }
+      className={`pulse-heart${className ? ` ${className}` : ''}`}
+      style={{
+        '--ph-size': `${size}px`,
+        '--ph-corner': `${corner}px`,
+        '--ph-pill': pillColor,
+        '--ph-idle': idleColor,
+        '--ph-liked': likedColor,
+        '--ph-text': textColor,
+        '--ph-roll': `${rollDuration}ms`,
+        '--ph-stroke': `${(1.5 * size) / 24}px`
+      }}
       onPointerDown={handlePointerDown}
       onPointerUp={handlePointerUp}
       onPointerLeave={handlePointerUp}
@@ -249,15 +217,8 @@ const PulseHeart: React.FC<PulseHeartProps> = ({
       onKeyDown={handleKeyDown}
       onClick={handleClick}
     >
-      <span
-        ref={pillRef}
-        className="inline-flex origin-center items-center [gap:calc(var(--ph-size)*0.25)] [padding:calc(var(--ph-size)*0.3)] [padding-inline-end:calc(var(--ph-size)*0.4)] group-data-[no-count]:[padding-inline-end:calc(var(--ph-size)*0.3)] rounded-[var(--ph-corner)] [background:var(--ph-pill)] [@media(prefers-contrast:more)]:[box-shadow:inset_0_0_0_1px_color-mix(in_srgb,var(--ph-text)_25%,transparent)]"
-      >
-        <span
-          ref={heartRef}
-          className="block h-[var(--ph-size)] w-[var(--ph-size)] origin-center [color:var(--ph-idle)] [transition:color_160ms_ease] group-data-[liked=true]:[color:var(--ph-liked)] group-data-[running]:transition-none group-data-[instant]:transition-none motion-reduce:[transition:color_200ms_ease] [&_svg]:block [&_svg]:h-full [&_svg]:w-full [&_svg]:overflow-visible [&_svg]:fill-none [&_svg]:stroke-current [&_svg]:[stroke-width:var(--ph-stroke)] [&_svg]:[stroke-linecap:round] [&_svg]:[stroke-linejoin:round] group-data-[liked=true]:[&_svg]:fill-current group-data-[solid]:[&_svg]:fill-current [@media(hover:hover)_and_(pointer:fine)]:group-enabled:group-hover:group-data-[liked=false]:[color:color-mix(in_srgb,var(--ph-idle)_45%,var(--ph-liked))]"
-          aria-hidden="true"
-        >
+      <span ref={pillRef} className="pulse-heart__pill">
+        <span ref={heartRef} className="pulse-heart__heart" aria-hidden="true">
           {paths ? (
             <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
               <g ref={glyphRef}>
@@ -271,19 +232,13 @@ const PulseHeart: React.FC<PulseHeartProps> = ({
           )}
         </span>
         {showCount ? (
-          <span
-            className="inline-flex font-semibold leading-none tracking-[-0.1px] tabular-nums [font-size:calc(var(--ph-size)*0.5)] [color:var(--ph-text)] [&>span]:block [&>span]:h-[1em]"
-            aria-hidden="true"
-          >
+          <span className="pulse-heart__count" aria-hidden="true">
             {cells.map((cell, i) =>
               'ch' in cell ? (
                 <span key={`c${i}`}>{cell.ch}</span>
               ) : (
-                <span key={`r${i}`} className="relative overflow-hidden">
-                  <span
-                    ref={rollRef}
-                    className="flex flex-col [transition:transform_var(--ph-roll)_var(--ph-ease-out)] motion-reduce:transition-none [&>span]:block [&>span]:h-[1em] [&>span]:leading-none"
-                  >
+                <span key={`r${i}`} className="pulse-heart__slot">
+                  <span ref={rollRef} className="pulse-heart__roll">
                     <span>{cell.top}</span>
                     <span>{cell.bottom}</span>
                   </span>
@@ -292,10 +247,8 @@ const PulseHeart: React.FC<PulseHeartProps> = ({
             )}
           </span>
         ) : null}
-        <span className="sr-only">{showCount ? `${label}, ${format(total)}` : label}</span>
+        <span className="pulse-heart__sr">{showCount ? `${label}, ${format(total)}` : label}</span>
       </span>
     </button>
   );
-};
-
-export default PulseHeart;
+}
