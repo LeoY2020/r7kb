@@ -61,10 +61,10 @@ export function MicroShowcase() {
           value={period}
           onChange={setPeriod}
           size="sm"
-          trackColor="#f5f5f7"
-          thumbColor="#ffffff"
-          textColor="#6e6e73"
-          activeTextColor="#1d1d1f"
+          trackColor="rgb(var(--page))"
+          thumbColor="rgb(var(--surface))"
+          textColor="rgb(var(--ink-muted))"
+          activeTextColor="rgb(var(--ink))"
           aria-label="选择时间周期"
         />
       </DemoCard>
@@ -77,8 +77,8 @@ export function MicroShowcase() {
           width={62}
           height={32}
           radius={16}
-          trackColor="#e8e8ed"
-          trackOnColor="#0071e3"
+          trackColor="rgb(var(--page))"
+          trackOnColor="rgb(var(--accent))"
           thumbColor="#ffffff"
           thumbOnColor="#ffffff"
         />
@@ -90,9 +90,9 @@ export function MicroShowcase() {
           count={likeCount}
           showCount
           size={22}
-          likedColor="#ff375f"
-          idleColor="#86868b"
-          pillColor="#ffffff"
+          likedColor="rgb(var(--rose))"
+          idleColor="rgb(var(--ink-faint))"
+          pillColor="rgb(var(--surface))"
           onChange={(next, count) => {
             setLiked(next);
             setLikeCount(count);
@@ -116,8 +116,8 @@ export function MicroShowcase() {
         <WarmTooltip
           content="内容填满后，这里会显示概念的一句话定义。"
           side="top"
-          surfaceColor="#ffffff"
-          inkColor="#1d1d1f"
+          surfaceColor="rgb(var(--surface))"
+          inkColor="rgb(var(--ink))"
         >
           <span className="cursor-help rounded-pill border border-line bg-surface px-3.5 py-1.5 text-[12px] text-ink-muted">
             悬停我试试
@@ -137,8 +137,8 @@ export function MicroShowcase() {
             <StatusMark
               status={runState}
               size={16}
-              color="#86868b"
-              doneColor="#0071e3"
+              color="rgb(var(--ink-faint))"
+              doneColor="rgb(var(--accent))"
               strike={false}
             />
             {runState === 'pending' ? '点击开始' : runState === 'running' ? '进行中…' : '已完成'}

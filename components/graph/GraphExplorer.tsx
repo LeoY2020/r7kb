@@ -42,10 +42,10 @@ export function GraphExplorer({ concepts, subjects }: GraphExplorerProps) {
           onChange={setLevel}
           size="md"
           aria-label="按层级筛选概念"
-          trackColor="#eeeef0"
-          thumbColor="#ffffff"
-          textColor="#6e6e73"
-          activeTextColor="#1d1d1f"
+          trackColor="rgb(var(--page))"
+          thumbColor="rgb(var(--surface))"
+          textColor="rgb(var(--ink-muted))"
+          activeTextColor="rgb(var(--ink))"
         />
         <div className="flex items-center gap-4 font-mono text-[11px] tracking-wide text-ink-faint">
           <span className="flex items-center gap-1.5">

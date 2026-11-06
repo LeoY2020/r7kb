@@ -56,10 +56,10 @@ export function LibraryBrowser({
           size="md"
           aria-label="按资料类型筛选"
           className="max-w-full"
-          trackColor="#eeeef0"
-          thumbColor="#ffffff"
-          textColor="#6e6e73"
-          activeTextColor="#1d1d1f"
+          trackColor="rgb(var(--page))"
+          thumbColor="rgb(var(--surface))"
+          textColor="rgb(var(--ink-muted))"
+          activeTextColor="rgb(var(--ink))"
         />
 
         <label className="group flex h-10 w-full items-center gap-2.5 rounded-pill border border-line bg-surface px-4 transition-colors focus-within:border-accent/40 lg:w-72">

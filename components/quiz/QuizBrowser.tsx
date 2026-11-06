@@ -52,10 +52,10 @@ export function QuizBrowser({ questions }: { questions: Question[] }) {
             onChange={(v) => setFilter(v)}
             size="md"
             aria-label="按掌握状态筛选"
-            trackColor="#eeeef0"
-            thumbColor="#ffffff"
-            textColor="#6e6e73"
-            activeTextColor="#1d1d1f"
+            trackColor="rgb(var(--page))"
+            thumbColor="rgb(var(--surface))"
+            textColor="rgb(var(--ink-muted))"
+            activeTextColor="rgb(var(--ink))"
           />
           <div className="flex items-center gap-3 text-[13px] text-ink-muted">
             <SquishSwitch
@@ -65,8 +65,8 @@ export function QuizBrowser({ questions }: { questions: Question[] }) {
               width={62}
               height={32}
               radius={16}
-              trackColor="#e4e4e9"
-              trackOnColor="#0071e3"
+              trackColor="rgb(var(--page))"
+              trackOnColor="rgb(var(--accent))"
               thumbColor="#ffffff"
               thumbOnColor="#ffffff"
             />

@@ -1,9 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
 import { useState } from 'react';
 import Icon from '@/components/site/Icon';
+import BranchedMenu, { type BranchedSection } from '@/components/reactbits-micro/BranchedMenu';
 import type { VaultTreeNode } from '@/lib/vault';
 
 type VaultSidebarProps = {
@@ -11,63 +11,37 @@ type VaultSidebarProps = {
   nodes: VaultTreeNode[];
 };
 
-function TreeNodes({ nodes, depth = 0 }: { nodes: VaultTreeNode[]; depth?: number }) {
-  const pathname = usePathname();
+/** 把 vault 目录树压成两层的分支菜单：章节为段，笔记为子项 */
+function toSections(nodes: VaultTreeNode[]): BranchedSection[] {
+  const collectFiles = (node: VaultTreeNode): { label: string; href: string }[] => {
+    const files: { label: string; href: string }[] = [];
 
-  return (
-    <div className={depth > 0 ? 'ml-2 border-l border-line pl-2.5' : ''}>
-      {nodes.map((node) => {
-        const href = node.slug ? `/knowledge/${node.slug}/` : undefined;
-        const active = href ? pathname === href || pathname === href.replace(/\/$/, '') : false;
+    for (const child of node.children) {
+      if (child.type === 'note' && child.slug) {
+        files.push({ label: child.title, href: `/knowledge/${child.slug}/` });
+      } else if (child.type === 'dir') {
+        if (child.slug) files.push({ label: child.title, href: `/knowledge/${child.slug}/` });
+        files.push(...collectFiles(child));
+      }
+    }
 
-        if (node.type === 'dir') {
-          return (
-            <div key={node.relPath} className="py-0.5">
-              {href ? (
-                <Link
-                  href={href}
-                  className={`flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[13px] font-semibold transition-colors ${
-                    active
-                      ? 'bg-accent-soft text-accent'
-                      : 'text-ink hover:bg-ink/[0.04]'
-                  }`}
-                >
-                  <Icon name="book" size={13} className="shrink-0 opacity-70" />
-                  {node.title}
-                </Link>
-              ) : (
-                <div className="flex items-center gap-1.5 px-2 py-1.5 text-[13px] font-semibold text-ink-muted">
-                  <Icon name="book" size={13} className="shrink-0 opacity-70" />
-                  {node.title}
-                </div>
-              )}
-              {node.children.length > 0 ? <TreeNodes nodes={node.children} depth={depth + 1} /> : null}
-            </div>
-          );
-        }
+    return files;
+  };
 
-        return (
-          <Link
-            key={node.relPath}
-            href={href ?? '#'}
-            className={`flex items-start gap-2 rounded-lg px-2 py-1.5 text-[13px] leading-snug transition-colors ${
-              active
-                ? 'bg-accent-soft font-medium text-accent'
-                : 'text-ink-muted hover:bg-ink/[0.04] hover:text-ink'
-            }`}
-          >
-            <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-ink-faint/70" />
-            {node.title}
-          </Link>
-        );
-      })}
-    </div>
-  );
+  return nodes
+    .filter((node) => node.type === 'dir')
+    .map((node) => ({
+      id: node.relPath,
+      label: node.title,
+      href: node.slug ? `/knowledge/${node.slug}/` : undefined,
+      children: collectFiles(node),
+    }));
 }
 
-/** 知识库目录树：目录层级高于笔记，缩进表达父子关系 */
+/** 知识库目录：Obsidian 式层级，用 ReactBits BranchedMenu 呈现分支 */
 export function VaultSidebar({ root, nodes }: VaultSidebarProps) {
   const [open, setOpen] = useState(false);
+  const sections = toSections(nodes);
 
   return (
     <aside className="lg:sticky lg:top-24 lg:self-start">
@@ -84,32 +58,33 @@ export function VaultSidebar({ root, nodes }: VaultSidebarProps) {
         </button>
       </div>
 
-      <nav
-        className={`mt-3 rounded-card border border-line bg-surface/70 p-3 shadow-soft lg:block ${
+      <div
+        className={`mt-3 rounded-card border border-line bg-surface/70 p-2.5 shadow-soft lg:block ${
           open ? 'block' : 'hidden'
         }`}
-        aria-label="知识库目录"
       >
         {root ? (
           <Link
             href={`/knowledge/${root.slug}/`}
-            className="mb-2 flex items-center gap-1.5 rounded-lg bg-accent-soft/60 px-2 py-2 text-[13px] font-semibold text-accent transition-colors hover:bg-accent-soft"
+            className="mb-1.5 flex items-center gap-1.5 rounded-lg bg-accent-soft/60 px-2 py-2 text-[13px] font-semibold text-accent transition-colors hover:bg-accent-soft"
           >
             <Icon name="knowledge" size={14} />
             {root.title}
           </Link>
         ) : null}
-        <TreeNodes nodes={nodes} />
-        <div className="mt-3 border-t border-line pt-3">
+
+        <BranchedMenu sections={sections} rowHeight={30} indent={32} trunk={12} />
+
+        <div className="mt-2 border-t border-line pt-2">
           <Link
             href="/knowledge/tags/"
-            className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[13px] text-ink-muted transition-colors hover:bg-ink/[0.04] hover:text-ink"
+            className="flex min-h-[30px] items-center gap-1.5 rounded-lg px-2 text-[13px] text-ink-muted transition-colors hover:bg-ink/[0.04] hover:text-ink"
           >
             <Icon name="tag" size={13} />
             按标签浏览
           </Link>
         </div>
-      </nav>
+      </div>
     </aside>
   );
 }

@@ -50,7 +50,7 @@ export default function QuizPage() {
         <div className="grid gap-4 md:grid-cols-2">
           <Link href="/mistakes/" className="block h-full">
             <SpotlightCard
-              theme="light"
+              theme="auto"
               spotlightColor="rgb(var(--rose) / 0.14)"
               className="!rounded-card group flex h-full flex-col border border-line !bg-surface !p-6 !shadow-soft transition-all duration-300 ease-apple hover:-translate-y-0.5 hover:!shadow-lift"
             >
@@ -66,7 +66,7 @@ export default function QuizPage() {
           </Link>
           <Link href="/knowledge/" className="block h-full">
             <SpotlightCard
-              theme="light"
+              theme="auto"
               spotlightColor="rgb(var(--accent) / 0.14)"
               className="!rounded-card group flex h-full flex-col border border-line !bg-surface !p-6 !shadow-soft transition-all duration-300 ease-apple hover:-translate-y-0.5 hover:!shadow-lift"
             >

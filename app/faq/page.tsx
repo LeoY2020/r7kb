@@ -85,7 +85,7 @@ export default function FaqPage() {
           <Reveal delay={80}>
             <div className="sticky top-24 space-y-4">
               <SpotlightCard
-                theme="light"
+                theme="auto"
                 spotlightColor="rgb(var(--accent) / 0.12)"
                 className="!rounded-card border border-line !bg-surface !p-6 !shadow-soft"
               >

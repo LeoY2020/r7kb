@@ -84,7 +84,7 @@ export function GraphCanvas({
           markerHeight="6"
           orient="auto-start-reverse"
         >
-          <path d="M 0 0 L 10 5 L 0 10 z" fill="rgba(0,0,0,0.18)" />
+          <path d="M 0 0 L 10 5 L 0 10 z" style={{ fill: 'rgb(var(--ink) / 0.18)' }} />
         </marker>
       </defs>
 
@@ -95,8 +95,7 @@ export function GraphCanvas({
           y={34}
           textAnchor="middle"
           className="font-mono"
-          fill="#86868b"
-          style={{ fontSize: 11, letterSpacing: '0.22em' }}
+          style={{ fontSize: 11, letterSpacing: '0.22em', fill: 'rgb(var(--ink-faint))' }}
         >
           {lv === 1 ? 'BASIC' : lv === 2 ? 'ADVANCED' : 'EXTENDED'}
         </text>
@@ -117,7 +116,7 @@ export function GraphCanvas({
               key={`${preId}-${p.concept.id}`}
               d={`M ${x1} ${y1} C ${mid} ${y1}, ${mid} ${y2}, ${x2} ${y2}`}
               fill="none"
-              stroke="rgba(0,0,0,0.18)"
+              style={{ stroke: 'rgb(var(--ink) / 0.18)' }}
               strokeWidth={1.2}
               markerEnd="url(#graph-arrow)"
             />
@@ -148,8 +147,10 @@ export function GraphCanvas({
               width={NODE_W}
               height={NODE_H}
               rx={12}
-              fill={selected ? '#f5f9ff' : '#ffffff'}
-              stroke={selected ? '#0071e3' : 'rgba(0,0,0,0.12)'}
+              style={{
+                fill: selected ? 'rgb(var(--accent-soft))' : 'rgb(var(--surface))',
+                stroke: selected ? 'rgb(var(--accent))' : 'rgb(var(--ink) / 0.15)',
+              }}
               strokeWidth={selected ? 1.8 : 1}
             />
             <circle cx={p.x - NODE_W / 2 + 14} cy={p.y} r={3.5} fill={p.color} />
@@ -157,8 +158,7 @@ export function GraphCanvas({
               x={p.x + 8}
               y={p.y + 4}
               textAnchor="middle"
-              fill="#1d1d1f"
-              style={{ fontSize: 12.5 }}
+              style={{ fontSize: 12.5, fill: 'rgb(var(--ink))' }}
             >
               {p.concept.label.length > 12
                 ? `${p.concept.label.slice(0, 12)}…`
@@ -185,9 +185,9 @@ function GhostGraph() {
     <svg viewBox="0 0 100 100" className="h-auto w-full" role="img" aria-label="图谱占位">
       <defs>
         <linearGradient id="ghost-line" x1="0" y1="0" x2="1" y2="0">
-          <stop offset="0%" stopColor="rgba(0,0,0,0.04)" />
-          <stop offset="50%" stopColor="rgba(0,0,0,0.18)" />
-          <stop offset="100%" stopColor="rgba(0,0,0,0.04)" />
+          <stop offset="0%" style={{ stopColor: 'rgb(var(--ink) / 0.04)' }} />
+          <stop offset="50%" style={{ stopColor: 'rgb(var(--ink) / 0.18)' }} />
+          <stop offset="100%" style={{ stopColor: 'rgb(var(--ink) / 0.04)' }} />
         </linearGradient>
       </defs>
 
@@ -215,8 +215,7 @@ function GhostGraph() {
             width="18"
             height="8"
             rx="2.5"
-            fill="#ffffff"
-            stroke="rgba(0,0,0,0.12)"
+            style={{ fill: 'rgb(var(--surface))', stroke: 'rgb(var(--ink) / 0.15)' }}
             strokeDasharray="3 2"
             strokeWidth="0.5"
           />
@@ -224,8 +223,7 @@ function GhostGraph() {
             x={g.x}
             y={g.y + 1.4}
             textAnchor="middle"
-            fill="#86868b"
-            style={{ fontSize: 3 }}
+            style={{ fontSize: 3, fill: 'rgb(var(--ink-faint))' }}
           >
             {g.label}
           </text>
@@ -236,8 +234,7 @@ function GhostGraph() {
         x="50"
         y="90"
         textAnchor="middle"
-        fill="#86868b"
-        style={{ fontSize: 3, letterSpacing: '0.4px' }}
+        style={{ fontSize: 3, letterSpacing: '0.4px', fill: 'rgb(var(--ink-faint))' }}
       >
         概念入库后，这里会自动连成一张有向图
       </text>

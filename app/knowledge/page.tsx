@@ -94,7 +94,7 @@ export default function KnowledgeHomePage() {
                 className="block h-full"
               >
                 <SpotlightCard
-                  theme="light"
+                  theme="auto"
                   spotlightColor="rgb(var(--accent) / 0.14)"
                   className="!rounded-card flex h-full flex-col border border-line !bg-surface !p-5 !shadow-soft transition-all duration-300 ease-apple hover:-translate-y-0.5 hover:!shadow-lift"
                 >

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef } from 'react';
+import { useThemeMode } from '@/components/site/useThemeMode';
 
 export type SpotlightShape = 'circle' | 'beam';
 
@@ -16,7 +17,7 @@ export type SpotlightCardProps = React.HTMLAttributes<HTMLDivElement> & {
   ambient?: boolean;
   flare?: boolean;
   grain?: number;
-  theme?: 'dark' | 'light';
+  theme?: 'dark' | 'light' | 'auto';
 };
 
 type Palette = { surface: string; border: string; shadow: string; light: string; fill: number; edge: number };
@@ -95,7 +96,7 @@ const SpotlightCard = ({
   ambient = false,
   flare = true,
   grain = 0,
-  theme = 'dark',
+  theme = 'auto',
   ...rest
 }: SpotlightCardProps) => {
   const rootRef = useRef<HTMLDivElement>(null);
@@ -103,7 +104,17 @@ const SpotlightCard = ({
   const grainRef = useRef<HTMLSpanElement>(null);
   const edgeRef = useRef<HTMLSpanElement>(null);
   const wakeRef = useRef<(() => void) | null>(null);
-  const palette = THEMES[theme] ?? THEMES.dark;
+  /** auto：跟随站点主题，并直接用 CSS 变量，切换主题时无需重新计算 */
+  const mode = useThemeMode();
+  const palette =
+    theme === 'auto'
+      ? {
+          ...(mode === 'dark' ? THEMES.dark : THEMES.light),
+          surface: 'rgb(var(--surface))',
+          border: 'var(--line)',
+          shadow: 'var(--shadow-soft)',
+        }
+      : THEMES[theme];
   const color = spotlightColor ?? palette.light;
   const form = SHAPES.includes(shape) ? shape : 'circle';
   const settings: Settings = {
