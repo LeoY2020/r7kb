@@ -2,6 +2,7 @@ import Link from 'next/link';
 import Hero from '@/components/home/Hero';
 import MicroShowcase from '@/components/home/MicroShowcase';
 import HomeCta from '@/components/home/HomeCta';
+import HomeBackground from '@/components/home/HomeBackground';
 import SpotlightCard from '@/components/reactbits/SpotlightCard';
 import Reveal from '@/components/site/Reveal';
 import SectionHeading from '@/components/site/SectionHeading';
@@ -15,6 +16,7 @@ export default function HomePage() {
 
   return (
     <>
+      <HomeBackground />
       <Hero />
 
       {/* 四个入口 */}
