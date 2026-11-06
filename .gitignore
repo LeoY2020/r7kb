@@ -34,3 +34,4 @@ yarn-error.log*
 # deploy（本地静态仓库副本与推送凭据，不入库）
 .deploy/
 deploy.token
+.next-deploy/

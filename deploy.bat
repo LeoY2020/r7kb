@@ -14,6 +14,7 @@ if not defined TOKEN (
 )
 
 echo [1/5] build static site...
+set "NEXT_DIST_DIR=.next-deploy"
 call npm run build >nul 2>&1
 if errorlevel 1 (
   echo [error] build failed
