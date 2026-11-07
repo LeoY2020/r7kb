@@ -2,8 +2,8 @@
 
 一个给班级用的知识库站点：**学习图谱、题库与错题本、资料库、常见问题** 四个入口。
 
-> 当前内容全部为占位。页面里的空状态、筛选器、微交互都是真实可操作的，
-> 你只需要往 `data/` 里填数据，页面就会自己长出来。
+> 内容全部放在 `content/`，每种内容一个目录，用 Markdown + frontmatter 维护；
+> 页面里的空状态、筛选器、微交互都是真实可操作的，加文件就会长出来。
 
 ---
 
@@ -63,46 +63,207 @@ class-kb/
 │   ├── quiz/                # QuestionCard、QuizBrowser
 │   ├── library/             # LibraryBrowser
 │   └── site/                # 导航、页脚、空状态、图标、滚动揭示等
-├── data/
-│   ├── site.ts              # 班级信息、导航、首页文案
-│   └── knowledge.ts         # 学科 / 概念 / 题目 / 资料 / FAQ（当前全空，含示例注释）
+├── content/                 # 站点内容：全部是 Markdown + frontmatter
+│   ├── knowledge/           # 知识库 vault：笔记、章节 index.md、_config/*.json
+│   ├── graph/               # 学习图谱：subjects/ 与 concepts/
+│   ├── quiz/                # 题库（错题本由浏览器本地保存）
+│   ├── library/             # 资料条目（文件本体放 public/resources/）
+│   └── faq/                 # 常见问题
+├── lib/                     # 构建期加载器：vault.ts / content.ts / frontmatter.ts
+├── data/site.ts             # 班级信息、导航、首页文案
 ├── public/resources/        # 课件、讲义原件放这里
 └── tailwind.config.js
 ```
 
 ---
 
-## 怎么填内容
+## 怎么添加内容
 
-只需要改两个文件，**不用碰任何组件**：
+所有内容都在 `content/` 下，用 Markdown 维护，**不需要改组件代码**。新增文件后重新构建，页面就会自动出现。
 
-### 1. 班级信息 —— `data/site.ts`
+### 通用规则（先看这里）
 
-```ts
-export const site: SiteConfig = {
-  name: '班级知识库',
-  school: '某某中学',
-  grade: '高二',
-  className: '3 班',
-  slogan: '把散落的知识点，整理成一张可以走的地图。',
-  term: '2026 春季学期',
-  maintainer: '学习委员',
-};
+1. frontmatter 必须写在文件最开头，用上下两行 `---` 包住。
+2. frontmatter 只支持三种写法：
+   - 单值：`title: 标题`
+   - 内联数组：`tags: [基础, 进阶]`
+   - 块级数组：
+
+     ```yaml
+     tags:
+       - 基础
+       - 进阶
+     ```
+
+3. 不支持嵌套对象、多行字符串和 HTML。值里可以带冒号；**值里含逗号时必须用引号包住**，否则会被当成数组切分。
+4. 以 `_` 或 `.` 开头的文件/目录不参与加载；`_README.md`、`README.md` 只是写给人看的说明。
+5. 站点是静态导出，没有运行时读取。改完要 `npm run build`（或运行 `deploy.bat`）才会生效。
+
+### 1. 知识库笔记（`content/knowledge/`）
+
+**一个 `.md` 文件 = 一篇笔记**。目录层级决定左侧导航树；目录里的 `index.md` 代表这个目录本身。
+
+```
+content/knowledge/
+├── index.md                  # 知识库首页（可选）
+├── 智能电子书/
+│   ├── index.md              # 第一章（目录节点）
+│   ├── 01-认识智能电子书/
+│   │   ├── index.md          # 1.1 这一节的目录节点
+│   │   └── 1.1-什么是智能电子书.md
+│   └── ...
+└── _config/                  # 章节配置，只在构建时读取，不显示
 ```
 
-### 2. 知识内容 —— `data/knowledge.ts`
+笔记的 frontmatter：
 
-文件里每个数组都有注释掉的示例，取消注释照着改即可：
+```md
+---
+slug: ch-01-1
+title: 什么是智能电子书
+description: 一句话摘要，会出现在列表和搜索结果里。
+tags: [智能电子书, 基础]
+order: 1
+chapter: 01-认识智能电子书
+updated: 2026-10-01
+---
+```
 
-- `subjects`：学科（id + 名称 + 颜色）
-- `concepts`：图谱节点，`prerequisites` 填前置概念 id，图谱会自动画箭头（必须无环）
-- `questions`：题目，`mastered: false` 的会自动进错题本
-- `resources`：资料条目，`href` 指向 `public/resources/` 里的文件
-- `faqs`：问答，支持分类
+| 字段 | 必填 | 说明 |
+| --- | --- | --- |
+| `slug` | 建议必填 | 唯一，决定地址 `/knowledge/<slug>/` |
+| `title` | 是 | 标题、导航显示名、双链匹配名 |
+| `description` | 否 | 摘要 |
+| `tags` | 否 | 数组，也可在正文写 `#标签` |
+| `order` | 否 | 同级排序，越小越靠前；不写按标题排序 |
+| `chapter` | 否 | 所属章节，仅作展示 |
+| `updated` | 否 | 更新时间，如 `2026-10-01` |
 
-### 3. 文件 —— `public/resources/`
+关于 `slug`：不写会自动取文件名去掉序号（`1.1-什么是智能电子书.md` → `什么是智能电子书`），中文会直接进 URL。建议显式写英文或短横线，且**所有笔记的 slug 不能重复**。
 
-课件、PDF、讲义放这里，命名建议「学期-学科-单元」，具体见 `public/resources/README.md`。
+正文支持：
+
+- 双链：`[[笔记标题]]`、`[[slug]]`、`[[标题|自定义文字]]`
+- 标签：`#智能电子书`
+- 题目块，页面里可一键加入错题本：
+
+  ```md
+  <question>
+  题干……
+  答案：……
+  解析：……
+  </question>
+  ```
+
+章节级配置（可选，都在 `content/knowledge/_config/`）：
+
+- `vault.json`：`{ "title": "...", "description": "..." }` 知识库标题与简介
+- `chapter-order.json`：`{ "root": "<index slug>", "chapters": [{ "slug": "...", "title": "...", "order": 1, "parent": "..." }] }` 控制章节顺序
+- `chapter-links.json`：`{ "links": { "<章节 index 的 slug>": { "prerequisites": ["slug"], "next": ["slug"], "related": ["slug"] } } }` 笔记底部的「先读这些 / 接下来读 / 相关章节」
+- `tag-map.json`：`{ "tags": { "标签": { "color": "#3b82f6", "chapters": ["slug"] } } }` 标签颜色
+
+### 2. 学习图谱（`content/graph/`）
+
+分两部分：学科和概念。
+
+**学科** `content/graph/subjects/*.md`：
+
+```md
+---
+id: math
+name: 数学
+color: '#3b82f6'
+---
+```
+
+**概念** `content/graph/concepts/**/*.md`：
+
+```md
+---
+id: linear-function
+label: 一次函数
+subject: math
+prerequisites: [coordinate-system]
+level: 1
+summary: 形如 y = kx + b（k ≠ 0）的函数，图像是一条直线。
+tags: [函数]
+---
+```
+
+- `id` 必须唯一；`prerequisites` 填**概念 id**（不是标题），图谱据此画箭头。
+- `subject` 填学科的 `id`。
+- `level` 只认 1 / 2 / 3；不写时按目录名推断：`基础/入门` → 1、`进阶/提高` → 2、`拓展/高级` → 3。
+- 前置依赖不能成环。
+- 正文可留空，`summary` 不写会取正文首段。
+
+### 3. 题库（`content/quiz/`）
+
+每道题一个 `.md`，可以按 `数学/`、`期中/` 等子目录分类。
+
+```md
+---
+id: q-001
+subject: math
+stem: 已知一次函数 y = 2x - 3，求它与 x 轴的交点。
+options: ['(1.5, 0)', '(0, -3)', '(3, 0)', '(-1.5, 0)']
+answer: (1.5, 0)
+explanation: 令 y = 0，解得 x = 1.5。
+difficulty: 1
+concept: linear-function
+source: 课本例题
+mastered: false
+---
+```
+
+- `options` 必须是数组；**含逗号或括号的选项一定用单引号包住**，否则会被逗号切开。
+- `difficulty` 只认 1 / 2 / 3，代表难度。
+- `concept` 填概念 `id`，用于题目与概念对应。
+- `mastered` 只是初始状态；页面上的「已掌握」勾选只存在内存里，刷新会重置。
+- 错题本（`/mistakes`）的数据保存在浏览器 localStorage（键 `class-kb-mistakes-v1`），增删改和导入导出都在本地，**不会回写这些 Markdown**。
+
+### 4. 资料库（`content/library/`）
+
+每份资料一个 `.md` 登记条目，**文件本体放 `public/resources/`**。
+
+```md
+---
+title: 第一单元复习提纲
+subject: math
+type: pdf
+href: /resources/unit-1-review.pdf
+size: 1.2 MB
+updatedAt: 2026-03-01
+description: 覆盖一次函数与方程。
+---
+```
+
+- `type` 只认 `pdf` / `slide` / `doc` / `video` / `link`；写别的值（例如 `txt`）会按 `link` 显示。
+- `href` 以 `/resources/` 开头，对应 `public/resources/` 下的文件；也允许填外部链接。
+- `subject` 填学科 `id`，用于筛选。
+- 正文和 `description` 二选一即可。
+
+### 5. 常见问题（`content/faq/`）
+
+每个问题一个 `.md`，可按分类建子目录（`作业/`、`考试/`、`方法/`）。
+
+```md
+---
+question: 错题本该怎么用才有效？
+category: 方法
+---
+每道错题只记三件事：错因、正确思路、同类题一道。
+```
+
+- `question` 是问题，**正文就是答案**，不需要额外的 `answer` 字段。
+- `category` 用于页面上的分类标签；不写则不显示标签。
+- 子目录只用于文件整理，不会改变分组；分类以 `category` 为准。
+
+### 6. 加完后自检
+
+1. `npm run dev`，打开对应页面确认新条目出现；
+2. 知识库笔记直接访问 `/knowledge/<slug>/` 不应 404；
+3. 图谱缺箭头，通常是 `prerequisites` 写成了标题而不是概念 `id`；
+4. `npm run build` 无报错，再按下面的「部署与推送」发布。
 
 ---
 
