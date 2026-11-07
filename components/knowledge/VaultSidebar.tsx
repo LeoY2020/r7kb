@@ -88,7 +88,6 @@ export function VaultSidebar({ root, nodes }: VaultSidebarProps) {
         ) : null}
 
         <BranchedMenu
-          key={active || 'vault'}
           items={items}
           defaultOpen={activeSection >= 0 ? activeSection : 0}
           defaultActive={active}
