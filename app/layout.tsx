@@ -28,7 +28,7 @@ const themeInit = `(function(){try{var k='class-kb-theme';var s=localStorage.get
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="zh-CN" suppressHydrationWarning>
-      <body className="relative min-h-screen bg-page font-sans antialiased">
+      <body className="relative min-h-screen font-sans antialiased">
         <Script id="theme-init" strategy="beforeInteractive">
           {themeInit}
         </Script>

@@ -93,7 +93,8 @@ html {
 }
 
 body {
-  background-color: rgb(var(--page));
+  /* 页面底色放在 html 上，body 保持透明，避免盖住 -z-10 的背景层 */
+  background-color: transparent;
   color: rgb(var(--ink));
   font-feature-settings: 'ss01' 1, 'cv01' 1;
   -webkit-font-smoothing: antialiased;
