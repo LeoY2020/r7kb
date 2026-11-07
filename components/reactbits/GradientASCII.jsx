@@ -845,4 +845,3 @@ const GradientASCII = ({
 };
 
 export default GradientASCII;
-
