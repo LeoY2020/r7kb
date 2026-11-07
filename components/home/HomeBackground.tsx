@@ -9,9 +9,9 @@ const PALETTE = {
 };
 
 /**
- * 首页专用背景：GradientASCII 固定在视口，向下渐隐，
- * 只在首页渲染；其它页面仍用 layout 里的柔和光晕。
- * 同时叠一层 CSS 渐变兜底，WebGL2 不可用时也有背景氛围。
+ * 首页专用背景：官方 GradientASCII 固定在视口，向下渐隐，
+ * 只在首页渲染；其它页面保持原样。
+ * 另叠一层同风格 CSS 渐变，WebGL2 不可用时仍有背景氛围。
  */
 export default function HomeBackground() {
   const mode = useThemeMode();
