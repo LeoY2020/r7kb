@@ -15,7 +15,7 @@
 | 样式 | Tailwind CSS 3 + 自定义设计 token（Apple 风浅色：`page #f5f5f7` / `surface #fff` / `ink #1d1d1f` / `accent #0071e3`） |
 | 动效 | `motion`（Framer Motion 12），React Bits 组件统一使用这个依赖 |
 | 组件 | React Bits（Particles / SpotlightCard / RotatingText …）+ React Bits Micro（RubberSegment / SquishSwitch / SpringCheck …） |
-| 输出 | `output: 'export'` 静态导出，`npm run build` 生成 `out/`，可直接丢到任意静态托管 |
+| 输出 | `output: 'export'` 静态导出：默认 `npm run build` 生成 `out/`；部署时用 `NEXT_DIST_DIR=.next-deploy`，产物在同名目录 |
 
 > 说明：`docx-to-web-publisher` 那种 Next.js 内容目录模式需要服务器能力，本项目选择**静态导出**，
 > 所以既能用 Next.js 的目录结构，也能白嫖 GitHub Pages / Vercel / Netlify 的免费静态托管。
@@ -35,8 +35,9 @@ npm run dev
 构建静态站点：
 
 ```bash
-npm run build      # 产物在 out/
-npx serve out      # 本地预览静态产物（或任意静态服务器）
+npm run build                        # 默认产物在 out/
+$env:NEXT_DIST_DIR='.next-deploy'; npm run build   # 部署构建，产物在 .next-deploy/
+npx serve out                        # 本地预览静态产物（或任意静态服务器）
 ```
 
 ---
@@ -105,22 +106,68 @@ export const site: SiteConfig = {
 
 ---
 
-## 部署
+## 部署与推送
 
-### 静态托管（推荐）
+站点走「源码仓库 → 构建产物仓库 → Netlify」的链路：
 
-```bash
+| 仓库 / 分支 | 用途 | 线上地址 |
+| --- | --- | --- |
+| `LeoY2020/r7kb`（main） | 源码 | — |
+| `LeoY2020/r7kb-web`（main） | 构建产物（正式） | <https://r7kb.netlify.app> |
+| `LeoY2020/r7kb-web`（test） | 构建产物（测试） | <https://r7kb-test.netlify.app> |
+
+推送静态产物仓库的 `main` / `test` 后，Netlify 会自动重新部署。
+
+### 1. 配置 token
+
+把 GitHub PAT（需要 `repo` 权限）写入 `class-kb/deploy.token`（单行，无空格）。
+该文件和 `.deploy/` 已在 `.gitignore` 中，不会被提交。
+
+### 2. 一键发布（推荐）
+
+双击运行 `deploy.bat`，它会依次：
+
+1. 用 `NEXT_DIST_DIR=.next-deploy` 构建静态站
+2. 提交并推送源码仓库 `r7kb`
+3. 把产物同步到 `.deploy/r7kb-web`
+4. 提交并推送静态站的 `main` 分支
+
+发布完成后到 Netlify 确认部署状态即可。
+
+> 重要：构建产物在 **`.next-deploy/`**，不是 `out/`。
+> `next.config.mjs` 中 `distDir` 随 `NEXT_DIST_DIR` 变化，静态导出目录也跟着变。
+
+### 3. 手动发布 / 推 test 分支
+
+脚本只推 `main`。需要同步 `test` 或手动发布时：
+
+```powershell
+$env:NEXT_DIST_DIR='.next-deploy'
 npm run build
-# 把 out/ 整个目录上传到任意静态托管
+
+robocopy ".next-deploy" ".deploy\r7kb-web" /MIR /XD ".git"
+New-Item -ItemType File -Force ".deploy\r7kb-web\.nojekyll"
+
+git -C ".deploy\r7kb-web" add -A
+git -C ".deploy\r7kb-web" commit -m "build: publish static site"
+git -C ".deploy\r7kb-web" push origin main
+git -C ".deploy\r7kb-web" push origin main:test
 ```
 
-### 子路径部署（GitHub Pages 等）
+只改代码、不发布时，正常提交推送源码仓库即可：
 
-```bash
-NEXT_PUBLIC_BASE_PATH=/class-kb npm run build
+```powershell
+git add -A
+git commit -m "feat: ..."
+git push origin main
 ```
 
-`next.config.mjs` 会读取这个变量设置 `basePath` / `assetPrefix`。
+### 4. 常见问题
+
+- **线上还是旧版**：先确认同步源是 `.next-deploy` 而不是 `out/`，再检查 Netlify 是否已完成部署；必要时强刷浏览器（Ctrl+F5）。
+- **`Cannot find module './vendor-chunks/...`**：dev 缓存的 `.next` 损坏。结束正在跑的 `next dev` 进程，删除 `.next` 后重新 `npm run dev`。发布构建使用隔离目录 `.next-deploy`，不会影响 dev。
+- **推送 443 超时**：多为网络问题，稍后重试；确认 `deploy.token` 未过期。
+- **子路径部署**（如 GitHub Pages 项目页）：用 `NEXT_PUBLIC_BASE_PATH=/仓库名 npm run build` 重新构建。
 
 ---
 

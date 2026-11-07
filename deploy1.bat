@@ -4,7 +4,7 @@ cd /d "%~dp0"
 
 set "WEB_DIR=.deploy\r7kb-web"
 
-rem ---- token£ºÓÅÏÈ deploy.token ÎÄ¼ş£¬Æä´Î GITHUB_TOKEN »·¾³±äÁ¿ ----
+rem ---- tokenï¼šä¼˜å…ˆ deploy.token æ–‡ä»¶ï¼Œå…¶æ¬¡ GITHUB_TOKEN ç¯å¢ƒå˜é‡ ----
 set "TOKEN="
 if exist "deploy.token" set /p TOKEN=<deploy.token
 if not defined TOKEN set "TOKEN=%GITHUB_TOKEN%"
@@ -43,7 +43,8 @@ if not exist "%WEB_DIR%\.git" (
 )
 
 echo [4/5] sync static files...
-robocopy "out" "%WEB_DIR%" /MIR /XD ".git" /NFL /NDL /NJH /NJS /NP >nul
+rem é™æ€å¯¼å‡ºäº§ç‰©å†™åœ¨ NEXT_DIST_DIRï¼ˆ.next-deployï¼‰ä¸‹ï¼Œè€Œä¸æ˜¯ out/
+robocopy ".next-deploy" "%WEB_DIR%" /MIR /XD ".git" /NFL /NDL /NJH /NJS /NP >nul
 if errorlevel 8 (
   echo [error] copy failed
   exit /b 1
