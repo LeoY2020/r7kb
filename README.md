@@ -1,12 +1,8 @@
 # 班级知识库 · Class Knowledge Base
 
 一个给班级用的知识库站点：**学习图谱、题库与错题本、资料库、常见问题** 四个入口。
-视觉与动效基于 [React Bits](https://reactbits.dev/) 与 [React Bits Micro](https://reactbits.dev/c/micro)，
-设计语言按 `apple-design-SKILL.md`（流体界面、弹簧动效、材质与排版）与 `ui-ux-pro-max-skill-main`
-（设计 token、Bento 栅格、克制用色）重做为 **Apple 风浅色系统**；
-内容结构参考了 `ibook-skills-main` 里「内容目录 / 学习图谱」的建站思路。
 
-> 当前内容全部为空（按需求先留空）。页面里的空状态、筛选器、微交互都是真实可操作的，
+> 当前内容全部为占位。页面里的空状态、筛选器、微交互都是真实可操作的，
 > 你只需要往 `data/` 里填数据，页面就会自己长出来。
 
 ---
