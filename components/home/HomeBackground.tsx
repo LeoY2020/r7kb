@@ -9,8 +9,9 @@ const PALETTE = {
 };
 
 /**
- * 首页专用背景：官方 GradientASCII 固定在视口，向下渐隐，
- * 只在首页渲染；其它页面保持原样。
+ * 首页专用背景：官方 GradientASCII 绝对定位在页面顶部，
+ * 随页面一起滚动；底部用遮罩渐隐，避免生硬截断。
+ * 只在首页渲染，其它页面保持原样。
  * 另叠一层同风格 CSS 渐变，WebGL2 不可用时仍有背景氛围。
  */
 export default function HomeBackground() {
@@ -20,11 +21,13 @@ export default function HomeBackground() {
   return (
     <div
       aria-hidden
-      className="pointer-events-none fixed inset-0 -z-10 overflow-hidden"
+      className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[120vh] overflow-hidden"
       style={{
         opacity: dark ? 0.62 : 0.55,
-        maskImage: 'linear-gradient(to bottom, #000 0%, #000 40%, rgba(0,0,0,0.5) 74%, transparent 96%)',
-        WebkitMaskImage: 'linear-gradient(to bottom, #000 0%, #000 40%, rgba(0,0,0,0.5) 74%, transparent 96%)',
+        maskImage:
+          'linear-gradient(to bottom, #000 0%, #000 58%, rgba(0,0,0,0.55) 82%, transparent 100%)',
+        WebkitMaskImage:
+          'linear-gradient(to bottom, #000 0%, #000 58%, rgba(0,0,0,0.55) 82%, transparent 100%)',
       }}
     >
       <div
