@@ -19,8 +19,6 @@ type NotePageProps = {
   params: { slug: string };
 };
 
-export const dynamicParams = false;
-
 export function generateStaticParams() {
   return getVaultNotes().map((note) => ({ slug: note.slug }));
 }

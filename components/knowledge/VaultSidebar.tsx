@@ -1,9 +1,11 @@
 'use client';
 
 import Link from 'next/link';
+import { usePathname, useRouter } from 'next/navigation';
 import { useState } from 'react';
 import Icon from '@/components/site/Icon';
-import BranchedMenu, { type BranchedSection } from '@/components/reactbits-micro/BranchedMenu';
+import BranchedMenu from '@/components/reactbits/BranchedMenu';
+import type { BranchedMenuItem } from '@/components/reactbits/BranchedMenu';
 import type { VaultTreeNode } from '@/lib/vault';
 
 type VaultSidebarProps = {
@@ -11,16 +13,16 @@ type VaultSidebarProps = {
   nodes: VaultTreeNode[];
 };
 
-/** 把 vault 目录树压成两层的分支菜单：章节为段，笔记为子项 */
-function toSections(nodes: VaultTreeNode[]): BranchedSection[] {
-  const collectFiles = (node: VaultTreeNode): { label: string; href: string }[] => {
-    const files: { label: string; href: string }[] = [];
+/** 把 vault 目录树压成两层分支菜单：章节为段，笔记为子项（value 为 slug） */
+function toItems(nodes: VaultTreeNode[]): BranchedMenuItem[] {
+  const collectFiles = (node: VaultTreeNode): { value: string; label: string }[] => {
+    const files: { value: string; label: string }[] = [];
 
     for (const child of node.children) {
       if (child.type === 'note' && child.slug) {
-        files.push({ label: child.title, href: `/knowledge/${child.slug}/` });
+        files.push({ value: child.slug, label: child.title });
       } else if (child.type === 'dir') {
-        if (child.slug) files.push({ label: child.title, href: `/knowledge/${child.slug}/` });
+        if (child.slug) files.push({ value: child.slug, label: child.title });
         files.push(...collectFiles(child));
       }
     }
@@ -31,17 +33,29 @@ function toSections(nodes: VaultTreeNode[]): BranchedSection[] {
   return nodes
     .filter((node) => node.type === 'dir')
     .map((node) => ({
-      id: node.relPath,
       label: node.title,
-      href: node.slug ? `/knowledge/${node.slug}/` : undefined,
       children: collectFiles(node),
     }));
 }
 
-/** 知识库目录：Obsidian 式层级，用 ReactBits BranchedMenu 呈现分支 */
+/** 从 /knowledge/<slug>/ 里取出当前笔记 slug */
+function currentSlug(pathname: string | null): string {
+  if (!pathname) return '';
+  const match = pathname.match(/^\/knowledge\/([^/]+)\/?$/);
+  if (!match) return '';
+  return decodeURIComponent(match[1]);
+}
+
+/** 知识库目录：Obsidian 式层级，用 ReactBits 官方 BranchedMenu 呈现分支 */
 export function VaultSidebar({ root, nodes }: VaultSidebarProps) {
   const [open, setOpen] = useState(false);
-  const sections = toSections(nodes);
+  const router = useRouter();
+  const pathname = usePathname();
+  const items = toItems(nodes);
+  const active = currentSlug(pathname);
+  const activeSection = items.findIndex((item) =>
+    item.children?.some((child) => child.value === active),
+  );
 
   return (
     <aside className="lg:sticky lg:top-24 lg:self-start">
@@ -73,7 +87,24 @@ export function VaultSidebar({ root, nodes }: VaultSidebarProps) {
           </Link>
         ) : null}
 
-        <BranchedMenu sections={sections} rowHeight={30} indent={32} trunk={12} />
+        <BranchedMenu
+          key={active || 'vault'}
+          items={items}
+          defaultOpen={activeSection >= 0 ? activeSection : 0}
+          defaultActive={active}
+          onSelect={(value) => {
+            router.push(`/knowledge/${value}/`);
+            setOpen(false);
+          }}
+          color="rgb(var(--ink))"
+          accentColor="rgb(var(--accent))"
+          lineColor="rgb(var(--line))"
+          width={208}
+          rowHeight={30}
+          indent={34}
+          trunk={12}
+          fontSize={13}
+        />
 
         <div className="mt-2 border-t border-line pt-2">
           <Link
