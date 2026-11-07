@@ -43,7 +43,8 @@ if not exist "%WEB_DIR%\.git" (
 )
 
 echo [4/5] sync static files...
-robocopy "out" "%WEB_DIR%" /MIR /XD ".git" /NFL /NDL /NJH /NJS /NP >nul
+rem 静态导出产物写在 NEXT_DIST_DIR（.next-deploy）下，而不是 out/
+robocopy ".next-deploy" "%WEB_DIR%" /MIR /XD ".git" /NFL /NDL /NJH /NJS /NP >nul
 if errorlevel 8 (
   echo [error] copy failed
   exit /b 1
