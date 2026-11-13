@@ -75,6 +75,20 @@ const parseColor = (value: string): number[] | null => {
   return [Number(parts[0]), Number(parts[1]), Number(parts[2]), parts.length > 3 ? Number(parts[3]) : 1];
 };
 
+/**
+ * 把 `var(--x)` 之类的 CSS 变量解析成当前主题下的实际颜色。
+ * canvas 的 fillStyle 不认识 var()，不解析的话会退化成黑色，深色模式下文字就消失了。
+ */
+const resolveColor = (value: string): string => {
+  if (typeof document === 'undefined' || !value.includes('var(')) return value;
+  const probe = document.createElement('span');
+  probe.style.cssText = `position:absolute;left:-9999px;top:0;color:${value}`;
+  document.body.appendChild(probe);
+  const resolved = getComputedStyle(probe).color;
+  probe.remove();
+  return resolved || value;
+};
+
 const blend = (from: number[], to: number[], amount: number) => {
   const channel = (a: number, b: number) =>
     Math.round(Math.pow(Math.pow(a / 255, 2.2) * (1 - amount) + Math.pow(b / 255, 2.2) * amount, 1 / 2.2) * 255);
@@ -199,11 +213,13 @@ const ShinyText = ({
 
     const draw = () => {
       const s = settingsRef.current!;
-      const key = `${s.color}|${s.shineColor}`;
+      // 颜色可能是 CSS 变量（如 var(--ink-faint)），canvas 无法解析，必须先在当前主题下解析成 rgb
+      const theme = typeof document === 'undefined' ? '' : (document.documentElement.dataset.theme ?? '');
+      const key = `${s.color}|${s.shineColor}|${theme}`;
       if (key !== state.colors) {
         state.colors = key;
-        base = parseColor(s.color);
-        shine = parseColor(s.shineColor);
+        base = parseColor(resolveColor(s.color));
+        shine = parseColor(resolveColor(s.shineColor));
         clear = shine ? [shine[0], shine[1], shine[2], 0] : null;
       }
       if (!base || !shine) {

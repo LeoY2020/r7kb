@@ -42,8 +42,8 @@ export function Hero() {
           <ShinyText
             text={`${site.latinName} · ${site.name}`}
             speed={6}
-            color="var(--ink-faint)"
-            shineColor="var(--accent)"
+            color="rgb(var(--ink-faint))"
+            shineColor="rgb(var(--accent))"
             className="text-[12px] tracking-[0.12em]"
           />
         </span>

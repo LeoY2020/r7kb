@@ -31,8 +31,8 @@ export function PageHeader({ latin, title, description, aside, children }: PageH
               text={latin}
               speed={5}
               trigger="view"
-              color="var(--ink-faint)"
-              shineColor="var(--accent)"
+              color="rgb(var(--ink-faint))"
+              shineColor="rgb(var(--accent))"
             />
           </p>
           <div className="mt-4 flex flex-col gap-8 md:flex-row md:items-end md:justify-between">

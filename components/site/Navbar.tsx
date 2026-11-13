@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { mainNav, site } from '@/data/site';
 import Icon from './Icon';
 import { MenuIcon } from './AnimatedIcons';
@@ -18,6 +19,7 @@ export function Navbar() {
   const pathname = usePathname() || '/';
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
+  const reduce = useReducedMotion() ?? false;
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 12);
@@ -101,41 +103,54 @@ export function Navbar() {
         </div>
       </div>
 
-      {open ? (
-        <div className="container-page lg:hidden">
-          <div className="mt-2 overflow-hidden rounded-panel border border-line bg-surface p-2 shadow-lift">
-            <nav aria-label="移动端导航" className="flex flex-col">
-              {mainNav.map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={`flex items-center justify-between rounded-[14px] px-3.5 py-3 text-[14px] transition-colors duration-200 ease-apple ${
-                    isActive(pathname, item.href)
-                      ? 'bg-accent-soft font-medium text-accent'
-                      : 'text-ink-muted hover:bg-ink/[0.03] hover:text-ink'
-                  }`}
-                >
-                  <span>{item.label}</span>
+      <AnimatePresence>
+        {open ? (
+          <motion.div
+            className="container-page lg:hidden"
+            style={{ transformOrigin: 'top right' }}
+            initial={{ opacity: 0, scale: 0.86, y: -16 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.9, y: -12 }}
+            transition={
+              reduce
+                ? { duration: 0 }
+                : { type: 'spring', stiffness: 460, damping: 26, mass: 0.9 }
+            }
+          >
+            <div className="mt-2 overflow-hidden rounded-panel border border-line bg-surface p-2 shadow-lift">
+              <nav aria-label="移动端导航" className="flex flex-col">
+                {mainNav.map((item) => (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={`flex items-center justify-between rounded-[14px] px-3.5 py-3 text-[14px] transition-colors duration-200 ease-apple ${
+                      isActive(pathname, item.href)
+                        ? 'bg-accent-soft font-medium text-accent'
+                        : 'text-ink-muted hover:bg-ink/[0.03] hover:text-ink'
+                    }`}
+                  >
+                    <span>{item.label}</span>
+                    <span className="font-mono text-[10px] tracking-[0.18em] text-ink-faint">
+                      {item.latin}
+                    </span>
+                  </Link>
+                ))}
+                <div className="mx-3 my-2 h-px bg-ink/[0.06]" />
+                <div className="flex items-center justify-between px-2 pb-1 pt-1">
                   <span className="font-mono text-[10px] tracking-[0.18em] text-ink-faint">
-                    {item.latin}
+                    APPEARANCE
                   </span>
+                  <span className="text-[12px] text-ink-muted">明暗主题</span>
+                </div>
+                <Link href="/knowledge/" className="btn btn-primary mx-1 mb-1">
+                  进入知识库
+                  <Icon name="arrow" size={15} />
                 </Link>
-              ))}
-              <div className="mx-3 my-2 h-px bg-ink/[0.06]" />
-              <div className="flex items-center justify-between px-2 pb-1 pt-1">
-                <span className="font-mono text-[10px] tracking-[0.18em] text-ink-faint">
-                  APPEARANCE
-                </span>
-                <span className="text-[12px] text-ink-muted">明暗主题</span>
-              </div>
-              <Link href="/knowledge/" className="btn btn-primary mx-1 mb-1">
-                进入知识库
-                <Icon name="arrow" size={15} />
-              </Link>
-            </nav>
-          </div>
-        </div>
-      ) : null}
+              </nav>
+            </div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
     </header>
   );
 }
