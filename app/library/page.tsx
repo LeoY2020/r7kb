@@ -20,8 +20,8 @@ const conventions = [
   },
   {
     icon: 'file' as const,
-    title: '条目写进 content/library/',
-    text: '每份资料一个 Markdown 文件，frontmatter 里登记 href、类型与更新时间。',
+    title: '条目写进 content/library/items.json',
+    text: '所有资料登记在一张表里，写 href、类型与更新时间，顺序就是页面上的顺序。',
   },
   {
     icon: 'download' as const,

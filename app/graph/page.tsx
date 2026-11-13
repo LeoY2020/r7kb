@@ -59,12 +59,12 @@ export default function GraphPage() {
                   d: '写在 content/graph/concepts/ 里，目录层级（基础/进阶/拓展）会自动成为图谱层级。',
                 },
                 {
-                  t: '一条边 = 一条依赖',
-                  d: '只有当「不先学 A 就学不懂 B」时才写 prerequisites，弱相关别连。',
+                  t: '边写在 edges.json',
+                  d: '先修关系是一条边，不是正文：在 content/graph/edges.json 里写 { from, to }。',
                 },
                 {
                   t: '必须无环',
-                  d: '如果绕一圈回到自己，说明拆得不够细，先把概念拆开。',
+                  d: '如果绕一圈回到自己，构建会打印出整条环，说明概念拆得不够细。',
                 },
               ].map((item) => (
                 <div key={item.t}>

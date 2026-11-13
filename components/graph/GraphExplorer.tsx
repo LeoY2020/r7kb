@@ -129,7 +129,7 @@ export function GraphExplorer({ concepts, subjects }: GraphExplorerProps) {
                 {[
                   { t: '先在 content/graph/subjects/ 建学科', d: '每门学科一个 Markdown，写 id 与颜色。' },
                   { t: '再登记概念节点', d: '写 label、summary、level。' },
-                  { t: '用 prerequisites 连边', d: '填前置概念的 id，图谱会自动画箭头。' },
+                  { t: '用 edges.json 连边', d: '在 { from, to } 里填前置与后学的概念 id，图谱会自动画箭头。' },
                 ].map((s, i) => (
                   <li key={s.t} className="flex gap-3">
                     <span className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-md border border-line bg-elevated font-mono text-[10px] text-accent">
@@ -145,11 +145,9 @@ export function GraphExplorer({ concepts, subjects }: GraphExplorerProps) {
               <div className="mt-5 rounded-xl border border-line bg-page p-3 font-mono text-[11px] leading-relaxed text-ink-muted">
                 <span className="text-ink-faint">{'{'}</span>
                 <br />
-                &nbsp;&nbsp;id: <span className="text-accent">&apos;linear-function&apos;</span>,
+                &nbsp;&nbsp;from: <span className="text-accent">&apos;coordinates&apos;</span>,
                 <br />
-                &nbsp;&nbsp;label: <span className="text-accent">&apos;一次函数&apos;</span>,
-                <br />
-                &nbsp;&nbsp;prerequisites: [<span className="text-accent">&apos;coordinates&apos;</span>],
+                &nbsp;&nbsp;to: <span className="text-accent">&apos;linear-function&apos;</span>
                 <br />
                 <span className="text-ink-faint">{'}'}</span>
               </div>

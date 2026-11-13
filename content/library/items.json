@@ -1,0 +1,14 @@
+{
+  "resources": [
+    {
+      "id": "testfile",
+      "title": "这是一个测试文件",
+      "subject": "test",
+      "type": "doc",
+      "href": "/resources/这是一个测试文件.txt",
+      "size": "0 KB",
+      "updatedAt": "2026-11-07",
+      "description": "测试文件"
+    }
+  ]
+}

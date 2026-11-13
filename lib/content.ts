@@ -1,24 +1,29 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import {
-  parseFrontmatter,
-  toConcept,
-  toFaq,
-  toQuestion,
-  toResource,
-  toSubject,
-  type RawDoc,
-} from './frontmatter';
-import type { Concept, Faq, Question, Resource, Stats, Subject } from './types';
+import { parseFrontmatter, toConcept, toFaq, toSubject, type RawDoc } from './frontmatter';
+import type {
+  Concept,
+  ConceptEdge,
+  Faq,
+  Question,
+  Resource,
+  ResourceType,
+  Stats,
+  Subject,
+} from './types';
 
 /**
  * 构建期内容加载器（仅服务端 / 静态导出时使用）。
  *
- * 内容目录：class-kb/content/
- *   graph/subjects/、graph/concepts/ 下的 Markdown
- *   quiz/、library/、faq/ 下的 Markdown
+ * 内容分两种：
+ *   正文型 → Markdown + frontmatter
+ *     graph/subjects、graph/concepts、faq、knowledge
+ *   记录型 → JSON（没有正文，只有字段）
+ *     graph/edges.json、quiz/*.json、library/items.json
  *
- * 以下划线或点开头的文件/目录、以及 _README.md 不参与加载。
+ * 所有校验都在这里做：字段缺失、id 重复、引用不存在、图谱成环都会让
+ * `npm run build` 直接失败，并指出文件与位置，避免静默变成默认值。
+ *
  * 客户端组件不要 import 本文件（含 node:fs）。
  */
 
@@ -27,7 +32,15 @@ const CONTENT_ROOT = path.join(process.cwd(), 'content');
 const isHidden = (name: string) =>
   name.startsWith('_') || name.startsWith('.') || name === 'README.md';
 
-function walkFiles(dir: string): string[] {
+function fail(message: string): never {
+  throw new Error(`[content] ${message}`);
+}
+
+/* ------------------------------------------------------------------ */
+/* 文件读取                                                            */
+/* ------------------------------------------------------------------ */
+
+function walkMarkdown(dir: string): string[] {
   if (!fs.existsSync(dir)) return [];
   const out: string[] = [];
   const entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -35,7 +48,7 @@ function walkFiles(dir: string): string[] {
     if (isHidden(entry.name)) continue;
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) {
-      out.push(...walkFiles(full));
+      out.push(...walkMarkdown(full));
     } else if (entry.isFile() && entry.name.toLowerCase().endsWith('.md')) {
       out.push(full);
     }
@@ -48,27 +61,81 @@ function toRelative(filePath: string): string {
 }
 
 function loadDocs(dir: string): RawDoc[] {
-  return walkFiles(dir).map((filePath) => {
+  return walkMarkdown(dir).map((filePath) => {
     const raw = fs.readFileSync(filePath, 'utf8');
     const { data, body } = parseFrontmatter(raw);
     return { data, body, filePath, relPath: toRelative(filePath) };
   });
 }
 
-/** 目录名（基础/进阶/拓展）→ 图谱层级 */
-function levelFromPath(relPath: string): 1 | 2 | 3 {
-  if (/基础|入门|基本|初级/.test(relPath)) return 1;
-  if (/进阶|提高|中级/.test(relPath)) return 2;
-  if (/拓展|高级|扩展/.test(relPath)) return 3;
-  return 1;
+/** 读取 JSON；文件不存在返回 null */
+function readJson(relPath: string): unknown {
+  const file = path.join(CONTENT_ROOT, relPath);
+  if (!fs.existsSync(file)) return null;
+  const raw = fs.readFileSync(file, 'utf8');
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch (error) {
+    fail(`content/${relPath} 不是合法 JSON：${(error as Error).message}`);
+  }
 }
 
-function fallbackId(relPath: string): string {
-  return relPath
-    .replace(/^[^/]+\//, '')
-    .replace(/^.*?\/(subjects|concepts)\//, '')
-    .replace(/\.md$/i, '')
-    .replace(/\//g, '-');
+/** JSON 目录下的所有 .json（跳过 `_` / `.` 开头） */
+function listJson(dir: string): string[] {
+  if (!fs.existsSync(dir)) return [];
+  return fs
+    .readdirSync(dir, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && !isHidden(entry.name) && entry.name.toLowerCase().endsWith('.json'))
+    .map((entry) => entry.name)
+    .sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'));
+}
+
+/* ------------------------------------------------------------------ */
+/* JSON 字段读取工具（严格：类型不对就报错，不猜）                     */
+/* ------------------------------------------------------------------ */
+
+function asObject(value: unknown, where: string): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    fail(`${where} 必须是一个对象`);
+  }
+  return value as Record<string, unknown>;
+}
+
+function str(value: unknown): string | undefined {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed || undefined;
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  return undefined;
+}
+
+function requiredStr(value: unknown, where: string, field: string): string {
+  const result = str(value);
+  if (!result) fail(`${where} 缺少 ${field}`);
+  return result;
+}
+
+function strList(value: unknown, where: string, field: string): string[] | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (!Array.isArray(value)) fail(`${where} 的 ${field} 必须是数组`);
+  const out = value
+    .map((item) => (typeof item === 'string' ? item.trim() : String(item ?? '').trim()))
+    .filter(Boolean);
+  return out.length ? out : undefined;
+}
+
+function levelOf(value: unknown, where: string, field: string): 1 | 2 | 3 | undefined {
+  if (value === undefined || value === null || value === '') return undefined;
+  const n = typeof value === 'number' ? value : Number(value);
+  if (n !== 1 && n !== 2 && n !== 3) fail(`${where} 的 ${field} 只能是 1 / 2 / 3`);
+  return n;
+}
+
+function boolOf(value: unknown, where: string, field: string): boolean | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== 'boolean') fail(`${where} 的 ${field} 必须是 true / false`);
+  return value;
 }
 
 /* ------------------------------------------------------------------ */
@@ -84,51 +151,237 @@ function cached<T>(key: string, factory: () => T): T {
   return value;
 }
 
+function fallbackId(relPath: string): string {
+  return relPath
+    .replace(/^[^/]+\//, '')
+    .replace(/^.*?\/(subjects|concepts)\//, '')
+    .replace(/\.md$/i, '')
+    .replace(/\//g, '-');
+}
+
+/* ---------------------------- 学科 ---------------------------- */
+
 export function getSubjects(): Subject[] {
-  return cached('subjects', () =>
-    loadDocs(path.join(CONTENT_ROOT, 'graph', 'subjects')).map((doc) =>
+  return cached('subjects', () => {
+    const subjects = loadDocs(path.join(CONTENT_ROOT, 'graph', 'subjects')).map((doc) =>
       toSubject(doc, fallbackId(doc.relPath))
-    )
-  );
+    );
+    const seen = new Set<string>();
+    for (const subject of subjects) {
+      if (seen.has(subject.id)) fail(`学科 id 重复：${subject.id}`);
+      seen.add(subject.id);
+    }
+    return subjects;
+  });
+}
+
+/* ---------------------------- 图谱边 ---------------------------- */
+
+export function getEdges(): ConceptEdge[] {
+  return cached('edges', () => {
+    const data = readJson('graph/edges.json');
+    if (data === null) return [];
+    const root = asObject(data, 'content/graph/edges.json');
+    if (!Array.isArray(root.edges)) fail('content/graph/edges.json 缺少 edges 数组');
+
+    const seen = new Set<string>();
+    return root.edges.map((item, index) => {
+      const where = `content/graph/edges.json → edges[${index}]`;
+      const edge = asObject(item, where);
+      const from = requiredStr(edge.from, where, 'from（前置概念 id）');
+      const to = requiredStr(edge.to, where, 'to（后学概念 id）');
+      if (from === to) fail(`${where} 自己指向自己：${from}`);
+      const key = `${from}->${to}`;
+      if (seen.has(key)) fail(`${where} 重复的边：${key}`);
+      seen.add(key);
+      return { from, to, note: str(edge.note) };
+    });
+  });
+}
+
+/* ---------------------------- 概念 ---------------------------- */
+
+/** 目录名（基础/进阶/拓展）→ 图谱层级 */
+function levelFromPath(relPath: string): 1 | 2 | 3 {
+  if (/基础|入门|基本|初级/.test(relPath)) return 1;
+  if (/进阶|提高|中级/.test(relPath)) return 2;
+  if (/拓展|高级|扩展/.test(relPath)) return 3;
+  return 1;
+}
+
+/** 有向图找环，出错时给出环上的概念 id */
+function assertAcyclic(concepts: Concept[]): void {
+  const byId = new Map(concepts.map((concept) => [concept.id, concept]));
+  const state = new Map<string, 0 | 1 | 2>();
+  const stack: string[] = [];
+
+  const visit = (id: string) => {
+    const current = state.get(id) ?? 0;
+    if (current === 2) return;
+    if (current === 1) {
+      const start = stack.indexOf(id);
+      const cycle = [...stack.slice(start), id].join(' → ');
+      fail(`content/graph/edges.json 让图谱成环：${cycle}`);
+    }
+    state.set(id, 1);
+    stack.push(id);
+    for (const pre of byId.get(id)?.prerequisites ?? []) {
+      if (byId.has(pre)) visit(pre);
+    }
+    stack.pop();
+    state.set(id, 2);
+  };
+
+  for (const concept of concepts) visit(concept.id);
 }
 
 export function getConcepts(): Concept[] {
-  return cached('concepts', () =>
-    loadDocs(path.join(CONTENT_ROOT, 'graph', 'concepts')).map((doc) => {
+  return cached('concepts', () => {
+    const docs = loadDocs(path.join(CONTENT_ROOT, 'graph', 'concepts'));
+    const concepts: Concept[] = [];
+    const byId = new Map<string, Concept>();
+
+    for (const doc of docs) {
+      if (doc.data.prerequisites !== undefined) {
+        fail(
+          `${doc.relPath} 里的 prerequisites 已废弃：先修关系统一写在 content/graph/edges.json`
+        );
+      }
       const concept = toConcept(doc, fallbackId(doc.relPath));
-      const explicit = doc.data.level;
-      return {
+      if (byId.has(concept.id)) fail(`概念 id 重复：${concept.id}（${doc.relPath}）`);
+
+      const item: Concept = {
         ...concept,
-        level: explicit === undefined ? levelFromPath(doc.relPath) : concept.level,
+        prerequisites: [],
+        level: doc.data.level === undefined ? levelFromPath(doc.relPath) : concept.level,
       };
-    })
-  );
+      byId.set(item.id, item);
+      concepts.push(item);
+    }
+
+    for (const edge of getEdges()) {
+      if (!byId.has(edge.from)) fail(`graph/edges.json 的 from "${edge.from}" 找不到对应概念`);
+      if (!byId.has(edge.to)) fail(`graph/edges.json 的 to "${edge.to}" 找不到对应概念`);
+      const target = byId.get(edge.to) as Concept;
+      target.prerequisites = [...(target.prerequisites ?? []), edge.from];
+    }
+
+    assertAcyclic(concepts);
+    return concepts;
+  });
+}
+
+/* ---------------------------- 题库 ---------------------------- */
+
+const RESOURCE_TYPES: ResourceType[] = ['pdf', 'slide', 'doc', 'video', 'link'];
+
+function questionFromJson(
+  item: unknown,
+  where: string,
+  subjectDefault: string
+): Question {
+  const raw = asObject(item, where);
+  const id = requiredStr(raw.id, where, 'id');
+  const stem = requiredStr(raw.stem, where, 'stem（题干）');
+  const subjectId = str(raw.subject) ?? str(raw.subjectId) ?? subjectDefault;
+  if (!subjectId) fail(`${where}（${id}）没有 subject，文件顶层也没有指定`);
+
+  return {
+    id,
+    subjectId,
+    stem,
+    options: strList(raw.options, where, 'options'),
+    answer: str(raw.answer),
+    explanation: str(raw.explanation),
+    difficulty: levelOf(raw.difficulty, where, 'difficulty') ?? 1,
+    conceptId: str(raw.conceptId) ?? str(raw.concept),
+    mastered: boolOf(raw.mastered, where, 'mastered') ?? false,
+    source: str(raw.source),
+    tags: strList(raw.tags, where, 'tags'),
+  };
 }
 
 export function getQuestions(): Question[] {
-  return cached('questions', () =>
-    loadDocs(path.join(CONTENT_ROOT, 'quiz')).map((doc) => {
-      const options = Array.isArray(doc.data.options)
-        ? (doc.data.options as string[]).map(String)
-        : [];
-      return toQuestion(doc, fallbackId(doc.relPath), options);
-    })
-  );
+  return cached('questions', () => {
+    const dir = path.join(CONTENT_ROOT, 'quiz');
+    const questions: Question[] = [];
+    const seen = new Set<string>();
+
+    for (const name of listJson(dir)) {
+      const relPath = `quiz/${name}`;
+      const root = asObject(readJson(relPath), `content/${relPath}`);
+      if (!Array.isArray(root.questions)) fail(`content/${relPath} 缺少 questions 数组`);
+      const subjectDefault = str(root.subject) ?? '';
+
+      root.questions.forEach((item, index) => {
+        const where = `content/${relPath} → questions[${index}]`;
+        const question = questionFromJson(item, where, subjectDefault);
+        if (seen.has(question.id)) fail(`题目 id 重复：${question.id}（${relPath}）`);
+        seen.add(question.id);
+        questions.push(question);
+      });
+    }
+
+    return questions;
+  });
+}
+
+/* ---------------------------- 资料库 ---------------------------- */
+
+function resourceIdFromHref(href: string, index: number): string {
+  const base = path
+    .basename(href.split(/[?#]/)[0])
+    .replace(/\.[^.]+$/, '')
+    .replace(/[^\w-]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return base || `resource-${index + 1}`;
 }
 
 export function getResources(): Resource[] {
-  return cached('resources', () =>
-    loadDocs(path.join(CONTENT_ROOT, 'library')).map((doc) =>
-      toResource(doc, fallbackId(doc.relPath))
-    )
-  );
+  return cached('resources', () => {
+    const data = readJson('library/items.json');
+    if (data === null) return [];
+    const root = asObject(data, 'content/library/items.json');
+    if (!Array.isArray(root.resources)) fail('content/library/items.json 缺少 resources 数组');
+
+    const seen = new Set<string>();
+    return root.resources.map((item, index) => {
+      const where = `content/library/items.json → resources[${index}]`;
+      const raw = asObject(item, where);
+      const title = requiredStr(raw.title, where, 'title');
+      const href = requiredStr(raw.href, where, 'href');
+      const typeRaw = requiredStr(raw.type, where, 'type');
+      if (!RESOURCE_TYPES.includes(typeRaw as ResourceType)) {
+        fail(`${where} 的 type "${typeRaw}" 不合法，只能是 ${RESOURCE_TYPES.join(' / ')}`);
+      }
+      const id = str(raw.id) ?? resourceIdFromHref(href, index);
+      if (seen.has(id)) fail(`资料 id 重复：${id}`);
+      seen.add(id);
+
+      return {
+        id,
+        title,
+        subjectId: str(raw.subject) ?? str(raw.subjectId),
+        type: typeRaw as ResourceType,
+        href,
+        size: str(raw.size),
+        updatedAt: str(raw.updatedAt),
+        description: str(raw.description),
+        tags: strList(raw.tags, where, 'tags'),
+      };
+    });
+  });
 }
+
+/* ---------------------------- 常见问题 ---------------------------- */
 
 export function getFaqs(): Faq[] {
   return cached('faqs', () =>
     loadDocs(path.join(CONTENT_ROOT, 'faq')).map((doc) => toFaq(doc, fallbackId(doc.relPath)))
   );
 }
+
+/* ---------------------------- 统计 ---------------------------- */
 
 export function getStats(): Stats {
   const questions = getQuestions();

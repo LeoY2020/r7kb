@@ -1,4 +1,4 @@
-import type { Concept, Faq, Question, Resource, ResourceType, Subject } from './types';
+import type { Concept, Faq, Subject } from './types';
 
 /* ------------------------------------------------------------------ */
 /* 极简 frontmatter 解析（YAML 子集，不引入依赖）                      */
@@ -128,15 +128,6 @@ export function asNumber(value: FrontmatterValue | undefined): number | undefine
   return Number.isFinite(n) ? n : undefined;
 }
 
-export function asBoolean(value: FrontmatterValue | undefined): boolean | undefined {
-  if (value === undefined) return undefined;
-  if (typeof value === 'boolean') return value;
-  const raw = String(value).trim().toLowerCase();
-  if (raw === 'true' || raw === 'yes' || raw === '1') return true;
-  if (raw === 'false' || raw === 'no' || raw === '0') return false;
-  return undefined;
-}
-
 export function asList(value: FrontmatterValue | undefined): string[] {
   if (value === undefined || value === null || value === '') return [];
   if (Array.isArray(value)) return value.map((item) => String(item).trim()).filter(Boolean);
@@ -198,46 +189,7 @@ export function toConcept(doc: RawDoc, fallbackId: string): Concept {
     label: asString(doc.data.label) ?? asString(doc.data.title) ?? fallbackId,
     subjectId: asString(doc.data.subject) ?? asString(doc.data.subjectId) ?? '',
     summary: asString(doc.data.summary) ?? excerpt(doc.body),
-    prerequisites: asList(doc.data.prerequisites),
     level: normalized ?? 1,
-    tags: asList(doc.data.tags),
-  };
-}
-
-export function toQuestion(doc: RawDoc, fallbackId: string, options: string[]): Question {
-  const difficulty = asNumber(doc.data.difficulty);
-  const normalized = difficulty === 1 || difficulty === 2 || difficulty === 3 ? difficulty : undefined;
-  return {
-    id: asString(doc.data.id) ?? fallbackId,
-    subjectId: asString(doc.data.subject) ?? asString(doc.data.subjectId) ?? '',
-    stem: asString(doc.data.stem) ?? excerpt(doc.body, 400) ?? fallbackId,
-    options: options.length ? options : undefined,
-    answer: asString(doc.data.answer),
-    explanation: asString(doc.data.explanation) ?? doc.body ?? undefined,
-    difficulty: normalized ?? 1,
-    conceptId: asString(doc.data.concept),
-    mastered: asBoolean(doc.data.mastered) ?? false,
-    source: asString(doc.data.source),
-    tags: asList(doc.data.tags),
-  };
-}
-
-const resourceTypes: ResourceType[] = ['pdf', 'slide', 'doc', 'video', 'link'];
-
-export function toResource(doc: RawDoc, fallbackId: string): Resource {
-  const typeRaw = asString(doc.data.type);
-  const type = resourceTypes.includes(typeRaw as ResourceType)
-    ? (typeRaw as ResourceType)
-    : 'link';
-  return {
-    id: asString(doc.data.id) ?? fallbackId,
-    title: asString(doc.data.title) ?? fallbackId,
-    subjectId: asString(doc.data.subject) ?? asString(doc.data.subjectId),
-    type,
-    href: asString(doc.data.href) ?? '#',
-    size: asString(doc.data.size),
-    updatedAt: asString(doc.data.updatedAt),
-    description: asString(doc.data.description) ?? excerpt(doc.body),
     tags: asList(doc.data.tags),
   };
 }

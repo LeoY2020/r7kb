@@ -2,7 +2,9 @@
 
 一个给班级用的知识库站点：**学习图谱、题库与错题本、资料库、常见问题** 四个入口。
 
-> 内容全部放在 `content/`，每种内容一个目录，用 Markdown + frontmatter 维护；
+> 内容全部放在 `content/`，按「有没有正文」分两种格式：
+> **正文型**（知识库笔记、FAQ、概念、学科）用 Markdown + frontmatter；
+> **记录型**（题库、资料条目、图谱的边）用 JSON——它们没有正文，只有字段。
 > 页面里的空状态、筛选器、微交互都是真实可操作的，加文件就会长出来。
 
 ---
@@ -63,12 +65,12 @@ class-kb/
 │   ├── quiz/                # QuestionCard、QuizBrowser
 │   ├── library/             # LibraryBrowser
 │   └── site/                # 导航、页脚、空状态、图标、滚动揭示等
-├── content/                 # 站点内容：全部是 Markdown + frontmatter
+├── content/                 # 站点内容：正文用 Markdown，记录用 JSON
 │   ├── knowledge/           # 知识库 vault：笔记、章节 index.md、_config/*.json
-│   ├── graph/               # 学习图谱：subjects/ 与 concepts/
-│   ├── quiz/                # 题库（错题本由浏览器本地保存）
-│   ├── library/             # 资料条目（文件本体放 public/resources/）
-│   └── faq/                 # 常见问题
+│   ├── graph/               # 学习图谱：subjects/ 与 concepts/（MD）+ edges.json
+│   ├── quiz/                # 题库：每学科一个 .json（错题本由浏览器本地保存）
+│   ├── library/             # 资料条目：items.json（文件本体放 public/resources/）
+│   └── faq/                 # 常见问题（MD，正文就是答案）
 ├── lib/                     # 构建期加载器：vault.ts / content.ts / frontmatter.ts
 ├── data/site.ts             # 班级信息、导航、首页文案
 ├── public/resources/        # 课件、讲义原件放这里
@@ -79,9 +81,18 @@ class-kb/
 
 ## 怎么添加内容
 
-所有内容都在 `content/` 下，用 Markdown 维护，**不需要改组件代码**。新增文件后重新构建，页面就会自动出现。
+所有内容都在 `content/` 下，**不需要改组件代码**。新增文件后重新构建，页面就会自动出现。
+
+选哪种格式只看一件事：**这条内容有没有正文要写。**
+
+| 有正文（要排版、要双链） | 只有字段（一条记录） |
+| --- | --- |
+| 知识库笔记、FAQ、概念说明、学科 | 题库、资料条目、图谱的先修边 |
+| Markdown + frontmatter | JSON |
 
 ### 通用规则（先看这里）
+
+**Markdown 部分：**
 
 1. frontmatter 必须写在文件最开头，用上下两行 `---` 包住。
 2. frontmatter 只支持三种写法：
@@ -95,9 +106,14 @@ class-kb/
        - 进阶
      ```
 
-3. 不支持嵌套对象、多行字符串和 HTML。值里可以带冒号；**值里含逗号时必须用引号包住**，否则会被当成数组切分。
+3. 不支持嵌套对象和多行字符串。值里可以带冒号；**值里含逗号时必须用引号包住**，否则会被当成数组切分。所以需要数组、需要多行文本的字段（题目选项、题干）都放进了 JSON。
 4. 以 `_` 或 `.` 开头的文件/目录不参与加载；`_README.md`、`README.md` 只是写给人看的说明。
-5. 站点是静态导出，没有运行时读取。改完要 `npm run build`（或运行 `deploy.bat`）才会生效。
+
+**JSON 部分：**
+
+- 不支持注释、不支持尾逗号；字符串里的换行写成 `\n`。
+- 构建时会校验字段、id 唯一、引用是否存在、图谱是否成环；**写错会直接让 `npm run build` 失败**，并指出文件和位置，不会静默变成默认值。
+- 站点是静态导出，没有运行时读取。改完要 `npm run build`（或运行 `deploy.bat`）才会生效。
 
 ### 1. 知识库笔记（`content/knowledge/`）
 
@@ -164,7 +180,7 @@ updated: 2026-10-01
 
 ### 2. 学习图谱（`content/graph/`）
 
-分两部分：学科和概念。
+分三部分：学科和概念用 Markdown，**先修关系单独写在 `edges.json`**。
 
 **学科** `content/graph/subjects/*.md`：
 
@@ -183,64 +199,88 @@ color: '#3b82f6'
 id: linear-function
 label: 一次函数
 subject: math
-prerequisites: [coordinate-system]
 level: 1
 summary: 形如 y = kx + b（k ≠ 0）的函数，图像是一条直线。
 tags: [函数]
 ---
 ```
 
-- `id` 必须唯一；`prerequisites` 填**概念 id**（不是标题），图谱据此画箭头。
+- `id` 必须唯一，`edges.json` 用它来连边。
 - `subject` 填学科的 `id`。
 - `level` 只认 1 / 2 / 3；不写时按目录名推断：`基础/入门` → 1、`进阶/提高` → 2、`拓展/高级` → 3。
-- 前置依赖不能成环。
 - 正文可留空，`summary` 不写会取正文首段。
+- **不要在这里写 `prerequisites`**：写了会构建报错，统一挪到 `edges.json`。
+
+**先修边** `content/graph/edges.json`，`from` 是 `to` 的前置：
+
+```json
+{
+  "edges": [
+    { "from": "coordinate-system", "to": "linear-function" },
+    { "from": "linear-function", "to": "quadratic-function", "note": "先掌握一次函数再看抛物线" }
+  ]
+}
+```
+
+- `from` / `to` 填概念 `id`（不是标题），必须是已存在的概念，否则构建报错。
+- 同一条边只能写一次；不能成环，成环时构建会打印出整条环。
+- 边的顺序不影响布局，图谱会自动分层。
 
 ### 3. 题库（`content/quiz/`）
 
-每道题一个 `.md`，可以按 `数学/`、`期中/` 等子目录分类。
+一个学科一个 `.json`，文件名随意（建议用学科 id）。文件里一次性放这门学科的所有题。
 
-```md
----
-id: q-001
-subject: math
-stem: 已知一次函数 y = 2x - 3，求它与 x 轴的交点。
-options: ['(1.5, 0)', '(0, -3)', '(3, 0)', '(-1.5, 0)']
-answer: (1.5, 0)
-explanation: 令 y = 0，解得 x = 1.5。
-difficulty: 1
-concept: linear-function
-source: 课本例题
-mastered: false
----
+```json
+{
+  "subject": "math",
+  "questions": [
+    {
+      "id": "q-001",
+      "stem": "已知一次函数 y = 2x - 3，求它与 x 轴的交点。",
+      "options": ["(1.5, 0)", "(0, -3)", "(3, 0)", "(-1.5, 0)"],
+      "answer": "(1.5, 0)",
+      "explanation": "令 y = 0，解得 x = 1.5。",
+      "difficulty": 1,
+      "conceptId": "linear-function",
+      "source": "课本例题",
+      "mastered": false
+    }
+  ]
+}
 ```
 
-- `options` 必须是数组；**含逗号或括号的选项一定用单引号包住**，否则会被逗号切开。
-- `difficulty` 只认 1 / 2 / 3，代表难度。
-- `concept` 填概念 `id`，用于题目与概念对应。
+- `questions[].id` 全局唯一；`stem` 必填，多行用 `\n`，公式和代码都不受限制。
+- `options` 是字符串数组，括号和逗号不用转义（这正是从 Markdown 换成 JSON 的原因）。
+- `difficulty` 只认 1 / 2 / 3。
+- `conceptId` 填概念 `id`，用于题目与概念对应。
 - `mastered` 只是初始状态；页面上的「已掌握」勾选只存在内存里，刷新会重置。
-- 错题本（`/mistakes`）的数据保存在浏览器 localStorage（键 `class-kb-mistakes-v1`），增删改和导入导出都在本地，**不会回写这些 Markdown**。
+- 错题本（`/mistakes`）的数据保存在浏览器 localStorage（键 `class-kb-mistakes-v1`），增删改和导入导出都在本地，**不会回写这些 JSON**。
 
 ### 4. 资料库（`content/library/`）
 
-每份资料一个 `.md` 登记条目，**文件本体放 `public/resources/`**。
+所有条目登记在 `items.json` 一张表里，**文件本体放 `public/resources/`**。
 
-```md
----
-title: 第一单元复习提纲
-subject: math
-type: pdf
-href: /resources/unit-1-review.pdf
-size: 1.2 MB
-updatedAt: 2026-03-01
-description: 覆盖一次函数与方程。
----
+```json
+{
+  "resources": [
+    {
+      "title": "第一单元复习提纲",
+      "subject": "math",
+      "type": "pdf",
+      "href": "/resources/unit-1-review.pdf",
+      "size": "1.2 MB",
+      "updatedAt": "2026-03-01",
+      "description": "覆盖一次函数与方程。"
+    }
+  ]
+}
 ```
 
-- `type` 只认 `pdf` / `slide` / `doc` / `video` / `link`；写别的值（例如 `txt`）会按 `link` 显示。
+- `title` / `href` / `type` 必填；`type` 只认 `pdf` / `slide` / `doc` / `video` / `link`，写别的会构建报错。
 - `href` 以 `/resources/` 开头，对应 `public/resources/` 下的文件；也允许填外部链接。
 - `subject` 填学科 `id`，用于筛选。
-- 正文和 `description` 二选一即可。
+- `id` 可省略，不写会从 `href` 的文件名推断。
+- 数组顺序就是页面顺序，想置顶就挪到前面。
 
 ### 5. 常见问题（`content/faq/`）
 
@@ -262,8 +302,8 @@ category: 方法
 
 1. `npm run dev`，打开对应页面确认新条目出现；
 2. 知识库笔记直接访问 `/knowledge/<slug>/` 不应 404；
-3. 图谱缺箭头，通常是 `prerequisites` 写成了标题而不是概念 `id`；
-4. `npm run build` 无报错，再按下面的「部署与推送」发布。
+3. 图谱缺箭头，通常是 `edges.json` 的 `from` / `to` 写成了标题而不是概念 `id`；
+4. `npm run build` 无报错，再按下面的「部署与推送」发布。内容格式写错时构建会直接停下并指出文件与位置。
 
 ---
 

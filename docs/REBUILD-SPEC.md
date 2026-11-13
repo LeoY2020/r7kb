@@ -26,15 +26,18 @@
 class-kb/content/
 ├── graph/
 │   ├── subjects/*.md          # 学科
-│   └── concepts/**/*.md       # 概念；目录层级 = 层级（基础/进阶/拓展 或 任意目录，frontmatter level 优先）
-├── quiz/**/*.md               # 题目；目录任意（建议 学科/考试）
-├── library/**/*.md            # 资料条目
-├── faq/**/*.md                # 问答
+│   ├── concepts/**/*.md       # 概念；目录层级 = 层级（基础/进阶/拓展 或 任意目录，frontmatter level 优先）
+│   └── edges.json             # 先修边 [{ from, to }]，from 是 to 的前置
+├── quiz/*.json                # 题目；一个学科一个文件 { subject, questions: [] }
+├── library/items.json         # 资料条目 { resources: [] }
+├── faq/**/*.md                # 问答（正文就是答案）
 └── knowledge/                 # 知识库（Obsidian vault，见第五节）
 ```
 
 - 所有 `_README.md` 与 `_` / `.` 开头的文件/目录不参与加载（用于说明与配置）。
+- **格式按「有没有正文」分**：有正文的用 Markdown + frontmatter；只有字段的记录用 JSON（题库、资料条目、图谱边）。原因：frontmatter 是手写 YAML 子集，不支持多行字符串与嵌套对象，选项数组、多行题干、边表都不适合塞进去。
 - Markdown 由 `lib/frontmatter.ts` 解析，格式为 YAML 子集：`key: value`、行内数组 `[a, b]`、块数组（`- item`），支持引号、布尔、数字。
+- JSON 由 `lib/content.ts` 读取，**构建期严格校验**：字段缺失/类型错误、id 重复、`from`/`to` 引用不存在、图谱成环都会抛错并指出文件与位置。
 - 加载器 `lib/content.ts` 只允许在服务端组件 / 构建期使用（`node:fs`）；客户端组件只能通过 props 拿数据。
 - 类型统一放在 `lib/types.ts`（`data/knowledge.ts` 已废弃）。
 
@@ -56,44 +59,64 @@ id: linear-function      # 可选，缺省用相对路径
 label: 一次函数           # 可选，缺省用文件名
 subject: math            # 必填（学科 id）
 summary: 形如 y = kx + b 的函数。   # 可选，缺省取正文首段
-prerequisites: [coordinate-system]  # 可选
 level: 1                 # 1/2/3，缺省由目录名（基础/进阶/拓展）推断，再缺省 1
 tags: [函数]
 ---
 正文可写解释，仅取首段作 summary（若无 summary）。
 ```
+> `prerequisites` 已废弃：写在概念 frontmatter 里会构建报错，先修关系改到 `graph/edges.json`。
 
-题目 `content/quiz/**/*.md`：
-```yaml
----
-id: q-001
-subject: math
-stem: 已知一次函数……        # 可选，缺省取正文
-options: ['A. …', 'B. …']
-answer: (1.5, 0)
-explanation: 令 y = 0……
-difficulty: 1              # 1/2/3
-concept: linear-function
-mastered: false
-source: 10 月月考 第 12 题
-tags: [函数]
----
+先修边 `content/graph/edges.json`：
+```json
+{
+  "edges": [
+    { "from": "coordinate-system", "to": "linear-function" },
+    { "from": "linear-function", "to": "quadratic-function", "note": "可选说明" }
+  ]
+}
 ```
 
-资料 `content/library/**/*.md`：
-```yaml
----
-id: r-001
-title: 第一单元复习提纲
-subject: math
-type: pdf                  # pdf|slide|doc|video|link
-href: /resources/unit-1-review.pdf
-size: 1.2 MB
-updatedAt: 2026-03-01
-description: ……
-tags: [复习]
----
+题目 `content/quiz/<subject>.json`：
+```json
+{
+  "subject": "math",
+  "questions": [
+    {
+      "id": "q-001",
+      "stem": "已知一次函数……",
+      "options": ["A. …", "B. …"],
+      "answer": "(1.5, 0)",
+      "explanation": "令 y = 0……",
+      "difficulty": 1,
+      "conceptId": "linear-function",
+      "mastered": false,
+      "source": "10 月月考 第 12 题",
+      "tags": ["函数"]
+    }
+  ]
+}
 ```
+必填：`id`、`stem`；`subject` 可写在题上覆盖文件顶层；`difficulty` 只能是 1/2/3。
+
+资料 `content/library/items.json`：
+```json
+{
+  "resources": [
+    {
+      "id": "r-001",
+      "title": "第一单元复习提纲",
+      "subject": "math",
+      "type": "pdf",
+      "href": "/resources/unit-1-review.pdf",
+      "size": "1.2 MB",
+      "updatedAt": "2026-03-01",
+      "description": "……",
+      "tags": ["复习"]
+    }
+  ]
+}
+```
+必填：`title`、`href`、`type`（`pdf|slide|doc|video|link`，写错直接报错）；`id` 缺省由 `href` 推断。
 
 FAQ `content/faq/**/*.md`：
 ```yaml

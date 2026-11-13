@@ -24,6 +24,17 @@ export type Concept = {
   tags?: string[];
 };
 
+/**
+ * 图谱先修边（`content/graph/edges.json`）。
+ * `from` 是 `to` 的前置概念；加载时会合并进 `Concept.prerequisites`。
+ */
+export type ConceptEdge = {
+  from: string;
+  to: string;
+  /** 可选说明，暂未在页面上展示 */
+  note?: string;
+};
+
 export type Question = {
   id: string;
   subjectId: string;
