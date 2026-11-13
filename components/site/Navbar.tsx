@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { mainNav, site } from '@/data/site';
 import Icon from './Icon';
+import { MenuIcon } from './AnimatedIcons';
 import ThemeToggle from './ThemeToggle';
 
 function isActive(pathname: string, href: string) {
@@ -94,7 +95,7 @@ export function Navbar() {
               aria-expanded={open}
               aria-label={open ? '关闭菜单' : '打开菜单'}
             >
-              <Icon name={open ? 'close' : 'menu'} size={18} />
+              <MenuIcon open={open} size={18} />
             </button>
           </div>
         </div>

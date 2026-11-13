@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Icon from './Icon';
+import { ThemeIcon } from './AnimatedIcons';
 import { THEME_CHANGE_EVENT } from './useThemeMode';
 
 export type ThemeMode = 'light' | 'dark';
@@ -80,7 +81,7 @@ export function ThemeToggle({ className = '' }: { className?: string }) {
       aria-label={theme === 'dark' ? '切换到浅色模式' : '切换到深色模式'}
       title={theme === 'dark' ? '切换到浅色模式' : '切换到深色模式'}
     >
-      <Icon name={mounted && theme === 'dark' ? 'sun' : 'moon'} size={17} />
+      {mounted ? <ThemeIcon dark={theme === 'dark'} size={17} /> : <Icon name="moon" size={17} />}
     </button>
   );
 }
