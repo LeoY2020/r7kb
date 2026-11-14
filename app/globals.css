@@ -411,14 +411,18 @@ body {
   }
 }
 
-/* 首页背景层入场：从透明淡入，避免 GradientASCII 入场过程中整屏发灰 */
-@keyframes home-bg-in {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
+/* 首页背景兜底层：WebGL 未就绪/不可用时显示。
+   颜色绑定 data-theme，避免首帧用浅色渐变再切深色（那一下就是灰 → 黑）。 */
+.home-bg-fallback {
+  background:
+    radial-gradient(ellipse 90% 62% at 50% 0%, rgba(147, 197, 253, 0.8) 0%, rgba(219, 234, 254, 0.6) 46%, rgba(255, 255, 255, 0) 80%),
+    radial-gradient(ellipse 55% 38% at 82% 26%, rgba(56, 189, 248, 0.32) 0%, rgba(255, 255, 255, 0) 70%);
+}
+
+html[data-theme='dark'] .home-bg-fallback {
+  background:
+    radial-gradient(ellipse 90% 62% at 50% 0%, rgba(47, 107, 255, 0.55) 0%, rgba(18, 58, 140, 0.34) 46%, rgba(9, 9, 11, 0) 80%),
+    radial-gradient(ellipse 55% 38% at 82% 26%, rgba(94, 234, 212, 0.26) 0%, rgba(9, 9, 11, 0) 70%);
 }
 
 /* Apple-style accessibility fallbacks */
