@@ -61,7 +61,7 @@ class-kb/
 │   ├── reactbits/           # React Bits 官方组件（原样落地）
 │   ├── reactbits-micro/     # React Bits Micro 官方组件（原样落地）
 │   ├── home/                # Hero、MicroShowcase
-│   ├── graph/               # GraphCanvas（纯 SVG 图谱）、GraphExplorer
+│   ├── graph/               # GraphCanvas（Canvas 力导向图谱）、GraphExplorer
 │   ├── quiz/                # QuestionCard、QuizBrowser
 │   ├── library/             # LibraryBrowser
 │   └── site/                # 导航、页脚、空状态、图标、滚动揭示等
@@ -180,10 +180,10 @@ updated: 2026-10-01
 
 ### 2. 学习图谱（`/graph`，数据来自知识库）
 
-图谱不再单独维护概念与边，而是直接由知识库章节生成：
+图谱不再单独维护概念与边，而是直接由知识库笔记生成：
 
-- **节点**：`content/knowledge/` 里每个章节目录的 `index.md`（标题、`description` 自动成为节点文字与简介）
-- **顺序**：`content/knowledge/_config/chapter-order.json`
+- **节点**：`content/knowledge/` 里的**所有笔记**；章节 `index.md` 的标题、`description` 自动成为节点文字与简介。没有写进 `chapter-links.json` 的笔记也会作为孤立节点显示。
+- **顺序**：`content/knowledge/_config/chapter-order.json`（其余的按 `order` / 标题排在后面）
 - **边**：`content/knowledge/_config/chapter-links.json`
   - `prerequisites` / `next` 画实线箭头（`next` 会补成下一章的 `prerequisites`）
   - `related` 画虚线

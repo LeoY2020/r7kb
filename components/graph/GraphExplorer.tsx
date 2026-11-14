@@ -51,7 +51,7 @@ export function GraphExplorer({ concepts, subjects }: GraphExplorerProps) {
           </span>
           <span className="text-ink-faint">|</span>
           <span>
-            {concepts.length} 个章节 · {edgeCount} 条关联
+            {concepts.length} 个笔记 · {edgeCount} 条关联
           </span>
         </div>
         <div className="flex items-center gap-3">
@@ -105,7 +105,7 @@ export function GraphExplorer({ concepts, subjects }: GraphExplorerProps) {
               <p className="eyebrow">怎么维护这张图</p>
               <ol className="mt-4 space-y-4">
                 {[
-                  { t: '在知识库里建章节', d: '每个章节目录写一个 index.md，标题与 description 会自动成为节点。' },
+                  { t: '笔记存在就上墙', d: '知识库里任何一篇笔记都会成为节点；章节目录的 index.md 标题会自动作为节点名。' },
                   { t: '在 chapter-links.json 连边', d: 'prerequisites 是前置，next 是下一章，related 会画成虚线。' },
                   { t: '构建期校验', d: '指向不存在的章节或绕成环，构建都会直接报错并指出位置。' },
                 ].map((step, index) => (

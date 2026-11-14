@@ -7,7 +7,7 @@ import { getChapterGraph } from '@/lib/vault';
 
 export const metadata: Metadata = {
   title: '学习图谱',
-  description: '把知识库章节按 chapter-links.json 里的先修关系连成一张有向图，看清每个章节从哪来、往哪去。',
+  description: '把知识库里的所有笔记画成一张关系图，章节按 chapter-links.json 的先修关系连边，其余笔记作为独立节点。',
 };
 
 export default function GraphPage() {
@@ -22,11 +22,11 @@ export default function GraphPage() {
       <PageHeader
         latin="GRAPH · 学习图谱"
         title="每个章节，都有它的上一站"
-        description="章节按 knowledge 目录 + chapter-links.json 里的先修关系连成一张有向图。沿箭头走，就是一条从基础到拓展的学习路径；倒着走，能快速定位自己卡在哪一步。"
+        description="知识库里的所有笔记都会出现在图上。章节按 chapter-links.json 的先修关系连成有向图，还没设置关系的笔记也会单独占一个节点。"
         aside={
           <div className="flex items-center gap-6 rounded-card border border-line bg-surface px-5 py-4 shadow-soft">
             <div>
-              <p className="eyebrow">章节</p>
+              <p className="eyebrow">笔记</p>
               <p className="mt-1 text-2xl font-semibold tracking-tight text-ink">
                 <CountUp to={concepts.length} from={0} duration={1.2} startWhen />
                 <span className="ml-1 text-xs font-normal text-ink-faint">个</span>

@@ -445,7 +445,8 @@ function assertGraphAcyclic(concepts: Concept[]): void {
 
 /**
  * 学习图谱节点与边全部来自知识库：
- * - 节点：`content/knowledge/` 里的章节 index 笔记（顺序取 `_config/chapter-order.json`）
+ * - 节点：`content/knowledge/` 里的**所有笔记**。章节 index 按 `_config/chapter-order.json`
+ *   排在前面，没有配置图谱关系的笔记也会作为孤立节点显示。
  * - 边：`_config/chapter-links.json` 的 prerequisites / next（实线箭头）与 related（虚线）
  */
 export function getChapterGraph(): { concepts: Concept[]; subjects: Subject[] } {
@@ -461,6 +462,14 @@ export function getChapterGraph(): { concepts: Concept[]; subjects: Subject[] } 
     for (const slug of Object.keys(links)) {
       if (bySlug.has(slug) && !slugs.includes(slug)) slugs.push(slug);
     }
+    // 其余笔记（没写进 chapter-links 的）也进图谱，按 order / 标题排在后面
+    const rest = notes
+      .filter((note) => !slugs.includes(note.slug))
+      .sort((a, b) => {
+        if (a.order !== b.order) return a.order - b.order;
+        return a.title.localeCompare(b.title, 'zh-Hans-CN');
+      });
+    for (const note of rest) slugs.push(note.slug);
     if (slugs.length === 0) return { concepts: [], subjects: [] };
 
     const known = new Set(slugs);
