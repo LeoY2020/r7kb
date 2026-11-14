@@ -78,7 +78,11 @@ function Toggle({
       </span>
       <span
         aria-hidden="true"
-        className={`mt-0.5 flex h-5 w-9 shrink-0 items-center rounded-full border transition-colors ${
+        onClick={(event) => {
+          event.stopPropagation();
+          onChange(!checked);
+        }}
+        className={`mt-0.5 flex h-5 w-9 shrink-0 cursor-pointer touch-manipulation items-center rounded-full border transition-colors ${
           checked ? 'border-accent bg-accent' : 'border-line bg-elevated'
         }`}
       >
