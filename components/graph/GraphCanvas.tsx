@@ -1,321 +1,782 @@
+'use client';
+
+import { useEffect, useMemo, useRef } from 'react';
 import type { Concept, Subject } from '@/lib/types';
+import { matchQuery, valueOfSlider, type GraphSettings } from '@/lib/graph-settings';
 
 type GraphCanvasProps = {
   concepts: Concept[];
   subjects: Subject[];
   selectedId?: string | null;
   onSelect?: (id: string) => void;
-  levelFilter?: number | null;
+  settings: GraphSettings;
+  className?: string;
 };
 
-const NODE_W = 148;
-const NODE_H = 46;
-const COL_GAP = 250;
-const PAD_X = 130;
-const PAD_Y = 90;
-
-const levelColor: Record<number, string> = {
-  1: '#0071e3',
-  2: '#5e5ce6',
-  3: '#30b0c7',
+type GNode = {
+  id: string;
+  label: string;
+  path: string;
+  type: 'file' | 'tag';
+  tags: string[];
+  color?: string;
+  weight: number;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  fx: number | null;
+  fy: number | null;
 };
 
-type Placed = { concept: Concept; x: number; y: number; color: string };
+type GLink = {
+  source: GNode;
+  target: GNode;
+  kind: 'pre' | 'rel' | 'tag';
+};
 
-/**
- * 纯 SVG 的学习图谱画布：不依赖 vis-network 等图形库，
- * 静态导出时也能直接渲染。
- * - 章节图谱（节点带 order）：纵向排布，节点文字保持可读；
- * - 其它情况：按 level 分列。
- * 前置关系画实线箭头，related 画虚线。
- */
-export function GraphCanvas({
+type Palette = {
+  node: string;
+  nodeTag: string;
+  focused: string;
+  line: string;
+  lineHighlight: string;
+  text: string;
+};
+
+const FALLBACK_PALETTE: Palette = {
+  node: '138,138,144',
+  nodeTag: '52,168,110',
+  focused: '0,113,227',
+  line: '138,138,144',
+  lineHighlight: '0,113,227',
+  text: '29,29,31',
+};
+
+/** 与 Obsidian 渲染层一致的常量 */
+const NODE_MIN = 8;
+const NODE_MAX = 30;
+const COLLIDE_RADIUS = 60;
+const ALPHA_MIN = 0.001;
+const ALPHA_DECAY = 1 - Math.pow(ALPHA_MIN, 1 / 300);
+const VELOCITY_DECAY = 0.6;
+const DIM_ALPHA = 0.2;
+
+function readPalette(canvas: HTMLCanvasElement): Palette {
+  const style = getComputedStyle(canvas);
+  const read = (name: string, fallback: string) => {
+    const value = style.getPropertyValue(name).trim();
+    return value || fallback;
+  };
+  return {
+    node: read('--graph-node', FALLBACK_PALETTE.node),
+    nodeTag: read('--graph-node-tag', FALLBACK_PALETTE.nodeTag),
+    focused: read('--graph-node-focused', FALLBACK_PALETTE.focused),
+    line: read('--graph-line', FALLBACK_PALETTE.line),
+    lineHighlight: read('--graph-line-highlight', FALLBACK_PALETTE.lineHighlight),
+    text: read('--graph-text', FALLBACK_PALETTE.text),
+  };
+}
+
+function rgba(rgb: string, alpha: number): string {
+  const parts = rgb.trim().split(/[\s,]+/).join(', ');
+  return `rgba(${parts}, ${alpha})`;
+}
+
+function hashString(value: string): number {
+  let hash = 2166136261;
+  for (let i = 0; i < value.length; i += 1) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return Math.abs(hash);
+}
+
+export default function GraphCanvas({
   concepts,
   subjects,
   selectedId,
   onSelect,
-  levelFilter = null,
+  settings,
+  className,
 }: GraphCanvasProps) {
-  const visible = concepts.filter((c) => (levelFilter ? c.level === levelFilter : true));
-  const useOrder = visible.some((c) => c.order !== undefined);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
+  const selectedRef = useRef(selectedId ?? null);
+  selectedRef.current = selectedId ?? null;
+  const subjectsRef = useRef(subjects);
+  subjectsRef.current = subjects;
+  const onSelectRef = useRef(onSelect);
+  onSelectRef.current = onSelect;
 
-  if (visible.length === 0) {
-    return <GhostGraph />;
-  }
+  const data = useMemo(() => buildGraphData(concepts, subjects, settings), [concepts, subjects, settings]);
+  const dataRef = useRef(data);
+  dataRef.current = data;
 
-  let width: number;
-  let height: number;
-  const placed: Placed[] = [];
-  const columnHeaders: { key: number; x: number }[] = [];
+  const stateRef = useRef({
+    nodes: new Map<string, GNode>(),
+    links: [] as GLink[],
+    neighbors: new Map<string, Set<string>>(),
+    alpha: 1,
+    scale: 1,
+    targetScale: 1,
+    panX: 0,
+    panY: 0,
+    hoverId: null as string | null,
+    dragId: null as string | null,
+    pointer: { x: 0, y: 0, downX: 0, downY: 0, moved: false, panning: false },
+    zoomCenter: { x: 0, y: 0 },
+    fitted: false,
+    dirty: true,
+  });
 
-  if (useOrder) {
-    const ordered = [...visible].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-    const rowGap = 78;
-    width = 720;
-    height = Math.max(380, PAD_Y * 2 + (ordered.length - 1) * rowGap);
-    ordered.forEach((c, index) => {
-      const subjectColor = subjects.find((s) => s.id === c.subjectId)?.color;
-      placed.push({
-        concept: c,
-        x: width / 2,
-        y: ordered.length === 1 ? height / 2 : PAD_Y + index * rowGap,
-        color: subjectColor ?? levelColor[(index % 3) + 1] ?? '#0071e3',
+  // 数据变化：保留已有坐标，新节点按黄金角铺开
+  useEffect(() => {
+    const state = stateRef.current;
+    const next = new Map<string, GNode>();
+    let index = 0;
+    for (const item of data.nodes) {
+      const existing = state.nodes.get(item.id);
+      const angle = index * 2.399963229728653;
+      const radius = 90 + 40 * Math.sqrt(index);
+      next.set(item.id, {
+        ...item,
+        weight: 0,
+        x: existing?.x ?? Math.cos(angle) * radius,
+        y: existing?.y ?? Math.sin(angle) * radius,
+        vx: 0,
+        vy: 0,
+        fx: null,
+        fy: null,
       });
-    });
-  } else {
-    const byLevel = new Map<number, Concept[]>();
-    for (const c of visible) {
-      const lv = c.level ?? 1;
-      const arr = byLevel.get(lv) ?? [];
-      arr.push(c);
-      byLevel.set(lv, arr);
+      index += 1;
     }
+    const links: GLink[] = [];
+    const degree = new Map<string, number>();
+    for (const link of data.links) {
+      const source = next.get(link.source);
+      const target = next.get(link.target);
+      if (!source || !target) continue;
+      links.push({ source, target, kind: link.kind });
+      degree.set(source.id, (degree.get(source.id) ?? 0) + 1);
+      degree.set(target.id, (degree.get(target.id) ?? 0) + 1);
+    }
+    const neighbors = new Map<string, Set<string>>();
+    for (const link of links) {
+      if (!neighbors.has(link.source.id)) neighbors.set(link.source.id, new Set());
+      if (!neighbors.has(link.target.id)) neighbors.set(link.target.id, new Set());
+      neighbors.get(link.source.id)!.add(link.target.id);
+      neighbors.get(link.target.id)!.add(link.source.id);
+    }
+    for (const node of next.values()) node.weight = degree.get(node.id) ?? 0;
+    state.nodes = next;
+    state.links = links;
+    state.neighbors = neighbors;
+    state.alpha = 0.6;
+    state.fitted = false;
+    state.dirty = true;
+  }, [data]);
 
-    const levelKeys = Array.from(byLevel.keys()).sort((a, b) => a - b);
-    const maxRows = Math.max(1, ...Array.from(byLevel.values()).map((v) => v.length));
+  // 力参数变化时重新加热
+  useEffect(() => {
+    stateRef.current.alpha = Math.max(stateRef.current.alpha, 0.3);
+    stateRef.current.dirty = true;
+  }, [
+    settings.centerStrength,
+    settings.repelStrength,
+    settings.linkStrength,
+    settings.linkDistance,
+  ]);
 
-    height = Math.max(460, PAD_Y * 2 + (maxRows - 1) * 92);
-    width = PAD_X * 2 + Math.max(1, levelKeys.length - 1) * COL_GAP;
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const wrap = wrapRef.current;
+    if (!canvas || !wrap) return;
 
-    levelKeys.forEach((lv, col) => {
-      const arr = byLevel.get(lv) ?? [];
-      const x = levelKeys.length === 1 ? width / 2 : PAD_X + col * COL_GAP;
-      columnHeaders.push({ key: lv, x });
-      arr.forEach((c, row) => {
-        const step = height / (arr.length + 1);
-        const y = arr.length === 1 ? height / 2 : step * (row + 1);
-        const subjectColor = subjects.find((s) => s.id === c.subjectId)?.color;
-        placed.push({
-          concept: c,
-          x,
-          y,
-          color: subjectColor ?? levelColor[lv] ?? '#0071e3',
-        });
-      });
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    let palette = readPalette(canvas);
+    const themeObserver = new MutationObserver(() => {
+      palette = readPalette(canvas);
+      stateRef.current.dirty = true;
     });
-  }
+    themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
-  const posById = new Map(placed.map((p) => [p.concept.id, p]));
-  // 纵向章节图谱给节点更大宽度，避免章节名被截断
-  const nodeW = useOrder ? 210 : NODE_W;
+    let width = 0;
+    let height = 0;
+    let dpr = Math.min(window.devicePixelRatio || 1, 2);
 
-  const edgePath = (from: Placed, to: Placed, related: boolean) => {
-    if (useOrder) {
-      if (related) {
-        const x1 = from.x + nodeW / 2;
-        const x2 = to.x + nodeW / 2;
-        const y1 = from.y;
-        const y2 = to.y;
-        return `M ${x1} ${y1} C ${x1 + 72} ${y1 + (y2 - y1) / 3}, ${x2 + 72} ${y2 - (y2 - y1) / 3}, ${x2} ${y2}`;
+    const resize = () => {
+      const rect = wrap.getBoundingClientRect();
+      width = Math.max(1, Math.floor(rect.width));
+      height = Math.max(1, Math.floor(rect.height));
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.floor(width * dpr);
+      canvas.height = Math.floor(height * dpr);
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
+      stateRef.current.dirty = true;
+    };
+    resize();
+    const resizeObserver = new ResizeObserver(resize);
+    resizeObserver.observe(wrap);
+
+    const state = stateRef.current;
+
+    const nodeRadius = (node: GNode, cfg: GraphSettings) =>
+      cfg.nodeSizeMultiplier * Math.max(NODE_MIN, Math.min(Math.sqrt(node.weight + 1) * 3, NODE_MAX));
+    const screenRadius = (node: GNode) =>
+      nodeRadius(node, settingsRef.current) * Math.sqrt(1 / state.scale) * state.scale;
+
+    /* -------------------------- 力导向模拟 -------------------------- */
+
+    const tick = (cfg: GraphSettings) => {
+      const center = valueOfSlider(cfg.centerStrength, 0.01);
+      const linkStrength = valueOfSlider(cfg.linkStrength, 0.01);
+      const repel = -Math.pow(cfg.repelStrength, 3) || -1;
+      const linkDistance = cfg.linkDistance;
+
+      state.alpha += (0 - state.alpha) * ALPHA_DECAY;
+      const alpha = state.alpha;
+
+      // 向心力（Obsidian 的 forceX / forceY）
+      for (const node of state.nodes.values()) {
+        if (node.fx !== null) continue;
+        node.vx += (0 - node.x) * center * alpha;
+        node.vy += (0 - node.y) * center * alpha;
       }
-      const y1 = from.y + NODE_H / 2;
-      const y2 = to.y - NODE_H / 2;
-      const mid = (y1 + y2) / 2;
-      return `M ${from.x} ${y1} C ${from.x} ${mid}, ${to.x} ${mid}, ${to.x} ${y2}`;
-    }
 
-    if (related) {
-      const x1 = from.x;
-      const x2 = to.x;
-      const y1 = from.y + NODE_H / 2;
-      const y2 = to.y + NODE_H / 2;
-      return `M ${x1} ${y1} C ${x1 + (x2 - x1) / 3} ${y1 + 72}, ${x2 - (x2 - x1) / 3} ${y2 + 72}, ${x2} ${y2}`;
-    }
+      // 连线弹簧
+      for (const link of state.links) {
+        const { source, target } = link;
+        let dx = target.x + target.vx - source.x - source.vx;
+        let dy = target.y + target.vy - source.y - source.vy;
+        if (dx === 0 && dy === 0) {
+          dx = (Math.random() - 0.5) * 1e-6;
+          dy = (Math.random() - 0.5) * 1e-6;
+        }
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        if (distance === 0) continue;
+        const strength = linkStrength / Math.min(source.weight, target.weight);
+        const k = ((distance - linkDistance) / distance) * alpha * strength;
+        dx *= k;
+        dy *= k;
+        const bias = source.weight / (source.weight + target.weight || 1);
+        target.vx -= dx * bias;
+        target.vy -= dy * bias;
+        source.vx += dx * (1 - bias);
+        source.vy += dy * (1 - bias);
+      }
 
-    const x1 = from.x + nodeW / 2;
-    const y1 = from.y;
-    const x2 = to.x - nodeW / 2;
-    const y2 = to.y;
-    const mid = (x1 + x2) / 2;
-    return `M ${x1} ${y1} C ${mid} ${y1}, ${mid} ${y2}, ${x2} ${y2}`;
+      // 库仑斥力（manyBody，distanceMin = 30）
+      const nodes = Array.from(state.nodes.values());
+      for (let i = 0; i < nodes.length; i += 1) {
+        const a = nodes[i];
+        for (let j = i + 1; j < nodes.length; j += 1) {
+          const b = nodes[j];
+          let dx = b.x - a.x;
+          let dy = b.y - a.y;
+          let distance2 = dx * dx + dy * dy;
+          if (distance2 === 0) {
+            dx = (Math.random() - 0.5) * 1e-6;
+            dy = (Math.random() - 0.5) * 1e-6;
+            distance2 = dx * dx + dy * dy;
+          }
+          if (distance2 < 900) distance2 = Math.sqrt(900 * distance2);
+          const force = (repel * alpha) / distance2;
+          a.vx += dx * force;
+          a.vy += dy * force;
+          b.vx -= dx * force;
+          b.vy -= dy * force;
+        }
+      }
+
+      // 碰撞半径 60，避免节点重叠
+      for (let i = 0; i < nodes.length; i += 1) {
+        const a = nodes[i];
+        const ra = nodeRadius(a, cfg) * 0.6 + COLLIDE_RADIUS * 0.4;
+        for (let j = i + 1; j < nodes.length; j += 1) {
+          const b = nodes[j];
+          const rb = nodeRadius(b, cfg) * 0.6 + COLLIDE_RADIUS * 0.4;
+          let dx = b.x - a.x;
+          let dy = b.y - a.y;
+          const distance = Math.sqrt(dx * dx + dy * dy) || 0.01;
+          const min = ra + rb;
+          if (distance < min) {
+            const push = ((min - distance) / distance) * 0.5;
+            dx *= push;
+            dy *= push;
+            a.vx -= dx;
+            a.vy -= dy;
+            b.vx += dx;
+            b.vy += dy;
+          }
+        }
+      }
+
+      // 积分
+      for (const node of state.nodes.values()) {
+        if (node.fx !== null) {
+          node.x = node.fx;
+          node.vx = 0;
+        } else {
+          node.x += node.vx;
+          node.vx *= VELOCITY_DECAY;
+        }
+        if (node.fy !== null) {
+          node.y = node.fy;
+          node.vy = 0;
+        } else {
+          node.y += node.vy;
+          node.vy *= VELOCITY_DECAY;
+        }
+      }
+      return alpha > ALPHA_MIN;
+    };
+
+    /* ---------------------------- 缩放动画 ---------------------------- */
+
+    const animateZoom = () => {
+      const diff = state.targetScale - state.scale;
+      if (Math.abs(diff) / Math.max(state.targetScale, 1e-6) < 0.01) {
+        state.scale = state.targetScale;
+        return false;
+      }
+      const next = state.scale + diff * 0.15;
+      const worldX = (state.zoomCenter.x - state.panX) / state.scale;
+      const worldY = (state.zoomCenter.y - state.panY) / state.scale;
+      state.scale = next;
+      state.panX = state.zoomCenter.x - worldX * next;
+      state.panY = state.zoomCenter.y - worldY * next;
+      return true;
+    };
+
+    /* ------------------------------ 绘制 ------------------------------ */
+
+    const draw = () => {
+      const cfg = settingsRef.current;
+      const selected = selectedRef.current;
+      const hover = state.hoverId;
+      const highlightId = state.dragId ?? hover ?? selected;
+      const highlight = highlightId ? state.nodes.get(highlightId) : null;
+      const neighbors = highlightId ? state.neighbors.get(highlightId) : null;
+
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, width, height);
+
+      const scale = state.scale;
+      const labelFade = Math.max(0, Math.min(1, Math.log2(scale) + 1 - cfg.textFadeMultiplier));
+      const arrowFade = Math.max(0, Math.min(1, (scale - 0.3) * 2));
+
+      const toScreen = (node: GNode) => ({
+        x: state.panX + node.x * scale,
+        y: state.panY + node.y * scale,
+      });
+
+      // 连线
+      for (const link of state.links) {
+        const a = toScreen(link.source);
+        const b = toScreen(link.target);
+        const connected = !highlightId || highlightId === link.source.id || highlightId === link.target.id;
+        const alpha = connected ? 1 : DIM_ALPHA;
+        const isHighlight = highlightId !== null && connected;
+        ctx.strokeStyle = rgba(isHighlight ? palette.lineHighlight : palette.line, (isHighlight ? 0.55 : 0.38) * alpha);
+        ctx.lineWidth = cfg.lineSizeMultiplier;
+        if (link.kind === 'rel') ctx.setLineDash([5, 5]);
+        else ctx.setLineDash([]);
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        if (cfg.showArrow && link.kind === 'pre') {
+          const dx = b.x - a.x;
+          const dy = b.y - a.y;
+          const distance = Math.hypot(dx, dy);
+          const targetRadius = screenRadius(link.target);
+          if (distance > targetRadius + cfg.lineSizeMultiplier) {
+            const angle = Math.atan2(dy, dx);
+            const size = 2 * Math.sqrt(cfg.lineSizeMultiplier);
+            const tipX = b.x - (dx / distance) * (targetRadius + 1);
+            const tipY = b.y - (dy / distance) * (targetRadius + 1);
+            ctx.fillStyle = rgba(palette.text, 0.55 * arrowFade * alpha);
+            ctx.beginPath();
+            ctx.moveTo(tipX, tipY);
+            ctx.lineTo(
+              tipX - Math.cos(angle - Math.PI / 7) * size * 2,
+              tipY - Math.sin(angle - Math.PI / 7) * size * 2
+            );
+            ctx.lineTo(
+              tipX - Math.cos(angle + Math.PI / 7) * size * 2,
+              tipY - Math.sin(angle + Math.PI / 7) * size * 2
+            );
+            ctx.closePath();
+            ctx.fill();
+          }
+        }
+      }
+
+      // 节点与标签
+      for (const node of state.nodes.values()) {
+        const point = toScreen(node);
+        const radius = screenRadius(node);
+        if (point.x < -radius - 120 || point.x > width + radius + 120) continue;
+        if (point.y < -radius - 120 || point.y > height + radius + 120) continue;
+
+        const isHighlight = highlightId === node.id;
+        const connected = !highlightId || isHighlight || (neighbors?.has(node.id) ?? false);
+        const alpha = connected ? 1 : DIM_ALPHA;
+
+        let fill = palette.node;
+        if (node.type === 'tag') fill = palette.nodeTag;
+        if (node.color) fill = hexToRgb(node.color) ?? fill;
+        if (isHighlight) fill = palette.focused;
+
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = rgba(fill, 0.95);
+        ctx.beginPath();
+        ctx.arc(point.x, point.y, radius, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 选中 / 悬停 / 拖拽：Obsidian 的一圈细描边
+        if (isHighlight) {
+          ctx.strokeStyle = rgba(palette.focused, 0.9);
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.arc(point.x, point.y, radius + 0.5, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+
+        if (labelFade > 0.001) {
+          const fontSize = (14 + radius / 4) * 1;
+          ctx.font = `500 ${fontSize}px ui-sans-serif, -apple-system, "Segoe UI", "Microsoft YaHei Light", sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'top';
+          const textAlpha = (isHighlight ? 1 : labelFade) * alpha;
+          ctx.fillStyle = rgba(palette.text, textAlpha);
+          const maxWidth = 260;
+          ctx.fillText(truncate(ctx, node.label, maxWidth), point.x, point.y + radius + 5);
+        }
+        ctx.globalAlpha = 1;
+      }
+    };
+
+    /* ---------------------------- 主循环 ---------------------------- */
+
+    const fitView = () => {
+      const nodes = Array.from(state.nodes.values());
+      if (nodes.length === 0) return;
+      let minX = Infinity;
+      let minY = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+      for (const node of nodes) {
+        minX = Math.min(minX, node.x);
+        maxX = Math.max(maxX, node.x);
+        minY = Math.min(minY, node.y);
+        maxY = Math.max(maxY, node.y);
+      }
+      const pad = 90;
+      const scale = Math.min(
+        3.5,
+        Math.max(0.05, Math.min(width / (maxX - minX + pad * 2 || 1), height / (maxY - minY + pad * 2 || 1)))
+      );
+      state.scale = scale;
+      state.targetScale = scale;
+      state.panX = width / 2 - ((minX + maxX) / 2) * scale;
+      state.panY = height / 2 - ((minY + maxY) / 2) * scale;
+      state.dirty = true;
+    };
+
+    let raf = 0;
+    let running = true;
+    const frame = () => {
+      if (!running) return;
+      const cfg = settingsRef.current;
+      let moving = false;
+      if (state.alpha > ALPHA_MIN) moving = tick(cfg) || moving;
+      if (animateZoom()) moving = true;
+      if (!state.fitted && state.alpha < 0.06 && state.nodes.size > 0) {
+        fitView();
+        state.fitted = true;
+        moving = true;
+      }
+      if (moving || state.dirty) {
+        state.dirty = false;
+        draw();
+      }
+      raf = window.requestAnimationFrame(frame);
+    };
+    raf = window.requestAnimationFrame(frame);
+
+    /* ---------------------------- 交互 ---------------------------- */
+
+    const hitTest = (clientX: number, clientY: number): GNode | null => {
+      const rect = canvas.getBoundingClientRect();
+      const x = clientX - rect.left;
+      const y = clientY - rect.top;
+      let found: GNode | null = null;
+      let best = Infinity;
+      for (const node of state.nodes.values()) {
+        const sx = state.panX + node.x * state.scale;
+        const sy = state.panY + node.y * state.scale;
+        const r = screenRadius(node) + 6;
+        const d = Math.hypot(sx - x, sy - y);
+        if (d <= r && d < best) {
+          best = d;
+          found = node;
+        }
+      }
+      return found;
+    };
+
+    const onPointerDown = (event: PointerEvent) => {
+      canvas.setPointerCapture(event.pointerId);
+      const node = hitTest(event.clientX, event.clientY);
+      state.pointer.downX = event.clientX;
+      state.pointer.downY = event.clientY;
+      state.pointer.moved = false;
+      if (node) {
+        state.dragId = node.id;
+        const rect = canvas.getBoundingClientRect();
+        node.fx = (event.clientX - rect.left - state.panX) / state.scale;
+        node.fy = (event.clientY - rect.top - state.panY) / state.scale;
+        state.alpha = Math.max(state.alpha, 0.3);
+        state.dirty = true;
+      } else {
+        state.pointer.panning = true;
+        state.pointer.x = event.clientX;
+        state.pointer.y = event.clientY;
+        canvas.style.cursor = 'grabbing';
+      }
+    };
+
+    const onPointerMove = (event: PointerEvent) => {
+      const rect = canvas.getBoundingClientRect();
+      if (state.dragId) {
+        const node = state.nodes.get(state.dragId);
+        if (node) {
+          node.fx = (event.clientX - rect.left - state.panX) / state.scale;
+          node.fy = (event.clientY - rect.top - state.panY) / state.scale;
+          state.alpha = Math.max(state.alpha, 0.2);
+          state.dirty = true;
+        }
+        state.pointer.moved = true;
+        return;
+      }
+      if (state.pointer.panning) {
+        state.panX += event.clientX - state.pointer.x;
+        state.panY += event.clientY - state.pointer.y;
+        state.pointer.x = event.clientX;
+        state.pointer.y = event.clientY;
+        if (Math.abs(event.clientX - state.pointer.downX) + Math.abs(event.clientY - state.pointer.downY) > 4) {
+          state.pointer.moved = true;
+        }
+        state.dirty = true;
+        return;
+      }
+      const node = hitTest(event.clientX, event.clientY);
+      const nextHover = node?.id ?? null;
+      canvas.style.cursor = node ? 'pointer' : 'grab';
+      if (nextHover !== state.hoverId) {
+        state.hoverId = nextHover;
+        state.dirty = true;
+      }
+    };
+
+    const endPointer = (event: PointerEvent) => {
+      const moved =
+        Math.abs(event.clientX - state.pointer.downX) + Math.abs(event.clientY - state.pointer.downY) > 4;
+      if (state.dragId) {
+        const draggedId = state.dragId;
+        const node = state.nodes.get(draggedId);
+        if (node) {
+          node.fx = null;
+          node.fy = null;
+        }
+        state.alpha = Math.max(state.alpha, 0.15);
+        state.dragId = null;
+        if (!moved) onSelectRef.current?.(draggedId);
+      }
+      if (state.pointer.panning) {
+        state.pointer.panning = false;
+        if (!state.pointer.moved) {
+          const clicked = hitTest(event.clientX, event.clientY);
+          if (clicked) onSelectRef.current?.(clicked.id);
+        }
+      }
+      canvas.style.cursor = 'grab';
+      state.dirty = true;
+    };
+
+    const onWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      const direction = event.deltaY > 0 ? 1 / 1.2 : 1.2;
+      state.targetScale = Math.min(8, Math.max(1 / 128, state.targetScale * direction));
+      state.zoomCenter = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+      state.dirty = true;
+    };
+
+    canvas.addEventListener('pointerdown', onPointerDown);
+    canvas.addEventListener('pointermove', onPointerMove);
+    canvas.addEventListener('pointerup', endPointer);
+    canvas.addEventListener('pointercancel', endPointer);
+    canvas.addEventListener('wheel', onWheel, { passive: false });
+    canvas.addEventListener('pointerleave', () => {
+      if (!state.dragId && !state.pointer.panning && state.hoverId !== null) {
+        state.hoverId = null;
+        state.dirty = true;
+      }
+    });
+
+    // 暴露少量命令给按钮
+    (canvas as unknown as { __graph?: unknown }).__graph = {
+      zoomIn: () => {
+        state.zoomCenter = { x: width / 2, y: height / 2 };
+        state.targetScale = Math.min(8, state.targetScale * 1.4);
+        state.dirty = true;
+      },
+      zoomOut: () => {
+        state.zoomCenter = { x: width / 2, y: height / 2 };
+        state.targetScale = Math.max(1 / 128, state.targetScale / 1.4);
+        state.dirty = true;
+      },
+      fit: fitView,
+    };
+
+    return () => {
+      running = false;
+      window.cancelAnimationFrame(raf);
+      resizeObserver.disconnect();
+      themeObserver.disconnect();
+      canvas.removeEventListener('pointerdown', onPointerDown);
+      canvas.removeEventListener('pointermove', onPointerMove);
+      canvas.removeEventListener('pointerup', endPointer);
+      canvas.removeEventListener('pointercancel', endPointer);
+      canvas.removeEventListener('wheel', onWheel);
+    };
+  }, []);
+
+  return (
+    <div ref={wrapRef} className={`graph-view relative h-[520px] w-full ${className ?? ''}`}>
+      <canvas ref={canvasRef} className="block h-full w-full touch-none" />
+      <div className="absolute bottom-3 right-3 flex flex-col overflow-hidden rounded-lg border border-line bg-surface/90 shadow-soft backdrop-blur">
+        {[
+          { label: '+', title: '放大', action: 'zoomIn' },
+          { label: '−', title: '缩小', action: 'zoomOut' },
+          { label: '⤢', title: '适应视图', action: 'fit' },
+        ].map((button) => (
+          <button
+            key={button.action}
+            type="button"
+            title={button.title}
+            onClick={() => {
+              const canvas = canvasRef.current as unknown as { __graph?: Record<string, () => void> } | null;
+              canvas?.__graph?.[button.action]?.();
+            }}
+            className="h-8 w-8 text-[13px] text-ink-muted transition-colors hover:bg-elevated hover:text-ink"
+          >
+            {button.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* 数据组装                                                            */
+/* ------------------------------------------------------------------ */
+
+type BuiltData = {
+  nodes: { id: string; label: string; path: string; type: 'file' | 'tag'; tags: string[]; color?: string }[];
+  links: { source: string; target: string; kind: 'pre' | 'rel' | 'tag' }[];
+};
+
+function buildGraphData(concepts: Concept[], _subjects: Subject[], settings: GraphSettings): BuiltData {
+  const colorOf = (concept: Concept): string | undefined => {
+    for (const group of settings.colorGroups) {
+      if (group.query.trim() && matchQuery(group.query, { label: concept.label, path: concept.id, tags: concept.tags ?? [] })) {
+        return group.color;
+      }
+    }
+    return undefined;
   };
 
-  return (
-    <svg
-      viewBox={`0 0 ${width} ${height}`}
-      className="h-auto w-full"
-      role="img"
-      aria-label="学习图谱：章节与关联关系"
-    >
-      <defs>
-        <marker
-          id="graph-arrow"
-          viewBox="0 0 10 10"
-          refX="9"
-          refY="5"
-          markerWidth="6"
-          markerHeight="6"
-          orient="auto-start-reverse"
-        >
-          <path d="M 0 0 L 10 5 L 0 10 z" style={{ fill: 'rgb(var(--ink) / 0.18)' }} />
-        </marker>
-      </defs>
-
-      {columnHeaders.map(({ key, x }) => (
-        <text
-          key={`lv-${key}`}
-          x={x}
-          y={34}
-          textAnchor="middle"
-          className="font-mono"
-          style={{ fontSize: 11, letterSpacing: '0.22em', fill: 'rgb(var(--ink-faint))' }}
-        >
-          {key === 1 ? 'BASIC' : key === 2 ? 'ADVANCED' : 'EXTENDED'}
-        </text>
-      ))}
-
-      {placed.map((p) =>
-        (p.concept.prerequisites ?? []).map((preId) => {
-          const from = posById.get(preId);
-          if (!from) return null;
-          return (
-            <path
-              key={`${preId}-${p.concept.id}`}
-              d={edgePath(from, p, false)}
-              fill="none"
-              style={{ stroke: 'rgb(var(--ink) / 0.18)' }}
-              strokeWidth={1.2}
-              markerEnd="url(#graph-arrow)"
-            />
-          );
-        })
-      )}
-
-      {/* related 只画一次，用虚线区别于先修箭头 */}
-      {placed.map((p) =>
-        (p.concept.related ?? []).map((relatedId) => {
-          if (p.concept.id > relatedId) return null;
-          const other = posById.get(relatedId);
-          if (!other) return null;
-          return (
-            <path
-              key={`rel-${p.concept.id}-${relatedId}`}
-              d={edgePath(p, other, true)}
-              fill="none"
-              strokeDasharray="4 4"
-              style={{ stroke: 'rgb(var(--accent) / 0.35)' }}
-              strokeWidth={1}
-            />
-          );
-        })
-      )}
-
-      {placed.map((p) => {
-        const selected = selectedId === p.concept.id;
-
-        return (
-          <g
-            key={p.concept.id}
-            onClick={() => onSelect?.(p.concept.id)}
-            className={onSelect ? 'cursor-pointer' : undefined}
-            role={onSelect ? 'button' : undefined}
-            tabIndex={onSelect ? 0 : undefined}
-            onKeyDown={(e) => {
-              if (onSelect && (e.key === 'Enter' || e.key === ' ')) {
-                e.preventDefault();
-                onSelect(p.concept.id);
-              }
-            }}
-          >
-            <rect
-              x={p.x - nodeW / 2}
-              y={p.y - NODE_H / 2}
-              width={nodeW}
-              height={NODE_H}
-              rx={12}
-              style={{
-                fill: selected ? 'rgb(var(--accent-soft))' : 'rgb(var(--surface))',
-                stroke: selected ? 'rgb(var(--accent))' : 'rgb(var(--ink) / 0.15)',
-              }}
-              strokeWidth={selected ? 1.8 : 1}
-            />
-            <circle cx={p.x - nodeW / 2 + 14} cy={p.y} r={3.5} fill={p.color} />
-            <text
-              x={p.x + 8}
-              y={p.y + 4}
-              textAnchor="middle"
-              style={{ fontSize: 12.5, fill: 'rgb(var(--ink))' }}
-            >
-              {p.concept.label.length > 14
-                ? `${p.concept.label.slice(0, 14)}…`
-                : p.concept.label}
-            </text>
-          </g>
-        );
-      })}
-    </svg>
+  const shown = concepts.filter((concept) =>
+    matchQuery(settings.search, { label: concept.label, path: concept.id, tags: concept.tags ?? [] })
   );
+  const shownIds = new Set(shown.map((c) => c.id));
+
+  const nodes: BuiltData['nodes'] = shown.map((concept) => ({
+    id: concept.id,
+    label: concept.label,
+    path: `/knowledge/${concept.id}/`,
+    type: 'file',
+    tags: concept.tags ?? [],
+    color: colorOf(concept),
+  }));
+
+  const links: BuiltData['links'] = [];
+  const linked = new Set<string>();
+  for (const concept of shown) {
+    for (const pre of concept.prerequisites ?? []) {
+      if (!shownIds.has(pre)) continue;
+      links.push({ source: pre, target: concept.id, kind: 'pre' });
+      linked.add(pre);
+      linked.add(concept.id);
+    }
+    for (const rel of concept.related ?? []) {
+      if (!shownIds.has(rel) || concept.id > rel) continue;
+      links.push({ source: concept.id, target: rel, kind: 'rel' });
+      linked.add(concept.id);
+      linked.add(rel);
+    }
+  }
+
+  if (settings.showTags) {
+    const tagIds = new Set<string>();
+    for (const concept of shown) {
+      for (const tag of concept.tags ?? []) {
+        const tagId = `tag:${tag}`;
+        if (!tagIds.has(tagId)) {
+          tagIds.add(tagId);
+          nodes.push({ id: tagId, label: `#${tag}`, path: tagId, type: 'tag', tags: [tag] });
+        }
+        links.push({ source: tagId, target: concept.id, kind: 'tag' });
+        linked.add(tagId);
+        linked.add(concept.id);
+      }
+    }
+  }
+
+  if (!settings.showOrphans) {
+    const keep = new Set(linked);
+    return {
+      nodes: nodes.filter((node) => keep.has(node.id)),
+      links,
+    };
+  }
+
+  return { nodes, links };
 }
 
-/** 没有概念时的“幽灵图谱”：让空页面也能看出这里将来长什么样 */
-function GhostGraph() {
-  const ghosts = [
-    { x: 20, y: 46, label: '前置概念' },
-    { x: 20, y: 74, label: '前置概念' },
-    { x: 50, y: 34, label: '当前概念' },
-    { x: 50, y: 62, label: '当前概念' },
-    { x: 80, y: 46, label: '拓展概念' },
-  ];
-
-  return (
-    <svg viewBox="0 0 100 100" className="h-auto w-full" role="img" aria-label="图谱占位">
-      <defs>
-        <linearGradient id="ghost-line" x1="0" y1="0" x2="1" y2="0">
-          <stop offset="0%" style={{ stopColor: 'rgb(var(--ink) / 0.04)' }} />
-          <stop offset="50%" style={{ stopColor: 'rgb(var(--ink) / 0.18)' }} />
-          <stop offset="100%" style={{ stopColor: 'rgb(var(--ink) / 0.04)' }} />
-        </linearGradient>
-      </defs>
-
-      {[
-        [26, 44, 42, 36],
-        [26, 74, 42, 62],
-        [58, 34, 72, 44],
-        [58, 62, 72, 46],
-      ].map(([x1, y1, x2, y2], i) => (
-        <path
-          key={i}
-          d={`M ${x1} ${y1} C ${(x1 + x2) / 2} ${y1}, ${(x1 + x2) / 2} ${y2}, ${x2} ${y2}`}
-          stroke="url(#ghost-line)"
-          strokeWidth="0.5"
-          strokeDasharray="2 2"
-          fill="none"
-        />
-      ))}
-
-      {ghosts.map((g, i) => (
-        <g key={i} opacity={0.55}>
-          <rect
-            x={g.x - 9}
-            y={g.y - 4}
-            width="18"
-            height="8"
-            rx="2.5"
-            style={{ fill: 'rgb(var(--surface))', stroke: 'rgb(var(--ink) / 0.15)' }}
-            strokeDasharray="3 2"
-            strokeWidth="0.5"
-          />
-          <text
-            x={g.x}
-            y={g.y + 1.4}
-            textAnchor="middle"
-            style={{ fontSize: 3, fill: 'rgb(var(--ink-faint))' }}
-          >
-            {g.label}
-          </text>
-        </g>
-      ))}
-
-      <text
-        x="50"
-        y="90"
-        textAnchor="middle"
-        style={{ fontSize: 3, letterSpacing: '0.4px', fill: 'rgb(var(--ink-faint))' }}
-      >
-        章节入库后，这里会自动连成一张有向图
-      </text>
-    </svg>
-  );
+function hexToRgb(hex: string): string | null {
+  const value = hex.replace('#', '').trim();
+  if (!/^[0-9a-f]{6}$/i.test(value)) return null;
+  return `${parseInt(value.slice(0, 2), 16)}, ${parseInt(value.slice(2, 4), 16)}, ${parseInt(value.slice(4, 6), 16)}`;
 }
 
-export default GraphCanvas;
+function truncate(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string {
+  if (ctx.measureText(text).width <= maxWidth) return text;
+  let result = text;
+  while (result.length > 1 && ctx.measureText(`${result}…`).width > maxWidth) {
+    result = result.slice(0, -1);
+  }
+  return `${result}…`;
+}

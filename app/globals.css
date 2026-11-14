@@ -234,6 +234,25 @@ body {
     background-size: 24px 24px;
   }
 
+  /* 学习图谱配色（画在 canvas 上，所以用纯 rgb 字符串） */
+  .graph-view {
+    --graph-node: 120 124 132;
+    --graph-node-tag: 48 160 100;
+    --graph-node-focused: 0 113 227;
+    --graph-line: 120 124 132;
+    --graph-line-highlight: 0 113 227;
+    --graph-text: 29 29 31;
+  }
+
+  [data-theme='dark'] .graph-view {
+    --graph-node: 168 172 184;
+    --graph-node-tag: 96 200 148;
+    --graph-node-focused: 84 156 255;
+    --graph-line: 150 156 170;
+    --graph-line-highlight: 84 156 255;
+    --graph-text: 236 238 242;
+  }
+
   .mesh-soft {
     background:
       radial-gradient(60% 55% at 18% 10%, var(--mesh-a), transparent 70%),

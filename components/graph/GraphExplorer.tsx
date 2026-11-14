@@ -1,9 +1,16 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import GraphCanvas from '@/components/graph/GraphCanvas';
+import GraphSettingsPanel from '@/components/graph/GraphSettingsPanel';
 import Icon from '@/components/site/Icon';
+import {
+  DEFAULT_GRAPH_SETTINGS,
+  loadGraphSettings,
+  saveGraphSettings,
+  type GraphSettings,
+} from '@/lib/graph-settings';
 import type { Concept, Subject } from '@/lib/types';
 
 type GraphExplorerProps = {
@@ -13,6 +20,20 @@ type GraphExplorerProps = {
 
 export function GraphExplorer({ concepts, subjects }: GraphExplorerProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settings, setSettings] = useState<GraphSettings>(DEFAULT_GRAPH_SETTINGS);
+
+  useEffect(() => {
+    setSettings(loadGraphSettings());
+  }, []);
+
+  const updateSettings = (patch: Partial<GraphSettings>) => {
+    setSettings((current) => {
+      const next = { ...current, ...patch };
+      saveGraphSettings(next);
+      return next;
+    });
+  };
 
   const byId = useMemo(() => new Map(concepts.map((c) => [c.id, c])), [concepts]);
   const selected = selectedId ? byId.get(selectedId) ?? null : null;
@@ -24,7 +45,7 @@ export function GraphExplorer({ concepts, subjects }: GraphExplorerProps) {
   return (
     <div>
       <div className="card flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
-        <div className="flex items-center gap-4 font-mono text-[11px] tracking-wide text-ink-faint">
+        <div className="flex flex-wrap items-center gap-4 font-mono text-[11px] tracking-wide text-ink-faint">
           <span className="flex items-center gap-1.5">
             <span className="h-px w-5 bg-ink/30" />前置
           </span>
@@ -36,30 +57,54 @@ export function GraphExplorer({ concepts, subjects }: GraphExplorerProps) {
             {concepts.length} 个章节 · {edgeCount} 条关联
           </span>
         </div>
-        <p className="font-mono text-[11px] tracking-wide text-ink-faint">
-          数据源：content/knowledge/_config/chapter-links.json
-        </p>
+        <div className="flex items-center gap-3">
+          <p className="hidden font-mono text-[11px] tracking-wide text-ink-faint sm:block">
+            拖动节点 · 滚轮缩放
+          </p>
+          <button
+            type="button"
+            onClick={() => setSettingsOpen((open) => !open)}
+            className={`rounded-pill border px-3 py-1.5 font-mono text-[11px] transition-colors ${
+              settingsOpen
+                ? 'border-accent/50 bg-accent-soft text-accent'
+                : 'border-line bg-elevated text-ink-muted hover:text-ink'
+            }`}
+          >
+            图谱设置
+          </button>
+        </div>
       </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_330px]">
         <div className="relative overflow-hidden rounded-card border border-line bg-surface">
           <div className="pointer-events-none absolute inset-0 dot-grid opacity-40" />
-          <div className="relative p-4 sm:p-6">
+          <div className="relative p-2 sm:p-3">
             <GraphCanvas
               concepts={concepts}
               subjects={subjects}
               selectedId={selectedId}
               onSelect={setSelectedId}
+              settings={settings}
             />
           </div>
           <div className="flex items-center justify-between border-t border-line px-4 py-3 font-mono text-[10px] tracking-wider text-ink-faint">
-            <span>CHAPTER GRAPH · {concepts.length} NODES</span>
+            <span>GRAPH VIEW · {concepts.length} NODES</span>
             <span className="hidden sm:inline">点击节点查看章节详情</span>
           </div>
         </div>
 
         <aside className="space-y-4">
-          {selected ? (
+          {settingsOpen ? (
+            <GraphSettingsPanel
+              settings={settings}
+              onChange={updateSettings}
+              onReset={() => {
+                setSettings(DEFAULT_GRAPH_SETTINGS);
+                saveGraphSettings(DEFAULT_GRAPH_SETTINGS);
+              }}
+              onClose={() => setSettingsOpen(false)}
+            />
+          ) : selected ? (
             <div className="card p-5">
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -138,14 +183,14 @@ export function GraphExplorer({ concepts, subjects }: GraphExplorerProps) {
                   { t: '在知识库里建章节', d: '每个章节目录写一个 index.md，标题与 description 会自动成为节点。' },
                   { t: '在 chapter-links.json 连边', d: 'prerequisites 是前置，next 是下一章，related 会画成虚线。' },
                   { t: '构建期校验', d: '指向不存在的章节或绕成环，构建都会直接报错并指出位置。' },
-                ].map((s, i) => (
-                  <li key={s.t} className="flex gap-3">
+                ].map((step, index) => (
+                  <li key={step.t} className="flex gap-3">
                     <span className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-md border border-line bg-elevated font-mono text-[10px] text-accent">
-                      {i + 1}
+                      {index + 1}
                     </span>
                     <div>
-                      <p className="text-[13px] text-ink">{s.t}</p>
-                      <p className="mt-0.5 text-[13px] leading-relaxed text-ink-muted">{s.d}</p>
+                      <p className="text-[13px] text-ink">{step.t}</p>
+                      <p className="mt-0.5 text-[13px] leading-relaxed text-ink-muted">{step.d}</p>
                     </div>
                   </li>
                 ))}
