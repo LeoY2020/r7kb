@@ -482,7 +482,7 @@ function Trigger({
           try {
             e.currentTarget.setPointerCapture(e.pointerId);
           } catch {}
-          t.current.press0 = { x: e.clientX, y: e.clientY, id: e.pointerId };
+          t.current.press0 = { x: e.clientX, y: e.clientY, id: e.pointerId, at: now() };
           setPressing(true);
           setFuse('arming');
           t.current.press = setTimeout(() => {
@@ -497,7 +497,16 @@ function Trigger({
           const p = t.current.press0;
           if (p && p.id === e.pointerId && Math.hypot(e.clientX - p.x, e.clientY - p.y) > HOLD_SLOP) cancelPress();
         },
-        onPointerUp: cancelPress,
+        onPointerUp: e => {
+          // 触屏轻点也直接显示提示（不必长按）
+          const p = t.current.press0;
+          if (p && p.id === e.pointerId && now() - p.at < longPress) {
+            cancelPress();
+            group.show(payload(), 'cold');
+            return;
+          }
+          cancelPress();
+        },
         onPointerCancel: cancelPress,
         onContextMenu: e => {
           if (t.current.press0) e.preventDefault();

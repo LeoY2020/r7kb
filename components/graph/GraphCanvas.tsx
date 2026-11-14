@@ -128,6 +128,8 @@ export default function GraphCanvas({
     dragId: null as string | null,
     pointer: { x: 0, y: 0, downX: 0, downY: 0, moved: false, panning: false },
     zoomCenter: { x: 0, y: 0 },
+    pointers: new Map<number, { x: number; y: number }>(),
+    pinch: null as null | { distance: number; scale: number; midX: number; midY: number },
     fitted: false,
     dirty: true,
   });
@@ -536,6 +538,31 @@ export default function GraphCanvas({
 
     const onPointerDown = (event: PointerEvent) => {
       canvas.setPointerCapture(event.pointerId);
+      state.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+      // 双指：进入捏合缩放（触屏与触控板）
+      if (state.pointers.size === 2) {
+        if (state.dragId) {
+          const dragged = state.nodes.get(state.dragId);
+          if (dragged) {
+            dragged.fx = null;
+            dragged.fy = null;
+          }
+          state.dragId = null;
+        }
+        state.pointer.panning = false;
+        const rect = canvas.getBoundingClientRect();
+        const [a, b] = Array.from(state.pointers.values());
+        state.pinch = {
+          distance: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)),
+          scale: state.scale,
+          midX: (a.x + b.x) / 2 - rect.left,
+          midY: (a.y + b.y) / 2 - rect.top,
+        };
+        state.pointer.moved = true;
+        return;
+      }
+
       const node = hitTest(event.clientX, event.clientY);
       state.pointer.downX = event.clientX;
       state.pointer.downY = event.clientY;
@@ -556,7 +583,33 @@ export default function GraphCanvas({
     };
 
     const onPointerMove = (event: PointerEvent) => {
+      if (state.pointers.has(event.pointerId)) {
+        state.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      }
       const rect = canvas.getBoundingClientRect();
+
+      // 双指捏合 + 双指平移
+      if (state.pinch && state.pointers.size >= 2) {
+        const [a, b] = Array.from(state.pointers.values());
+        const distance = Math.max(1, Math.hypot(a.x - b.x, a.y - b.y));
+        const midX = (a.x + b.x) / 2 - rect.left;
+        const midY = (a.y + b.y) / 2 - rect.top;
+        const nextScale = Math.min(8, Math.max(1 / 128, state.pinch.scale * (distance / state.pinch.distance)));
+        const worldX = (midX - state.panX) / state.scale;
+        const worldY = (midY - state.panY) / state.scale;
+        state.scale = nextScale;
+        state.targetScale = nextScale;
+        state.panX = midX - worldX * nextScale;
+        state.panY = midY - worldY * nextScale;
+        state.panX += midX - state.pinch.midX;
+        state.panY += midY - state.pinch.midY;
+        state.pinch.midX = midX;
+        state.pinch.midY = midY;
+        state.pointer.moved = true;
+        state.dirty = true;
+        return;
+      }
+
       if (state.dragId) {
         const node = state.nodes.get(state.dragId);
         if (node) {
@@ -589,6 +642,15 @@ export default function GraphCanvas({
     };
 
     const endPointer = (event: PointerEvent) => {
+      state.pointers.delete(event.pointerId);
+      if (state.pinch) {
+        if (state.pointers.size < 2) {
+          state.pinch = null;
+          state.targetScale = state.scale;
+          state.dirty = true;
+        }
+        return;
+      }
       const moved =
         Math.abs(event.clientX - state.pointer.downX) + Math.abs(event.clientY - state.pointer.downY) > 4;
       if (state.dragId) {

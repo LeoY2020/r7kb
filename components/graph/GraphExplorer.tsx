@@ -1,10 +1,9 @@
 'use client';
 
-import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import GraphCanvas from '@/components/graph/GraphCanvas';
 import GraphSettingsPanel from '@/components/graph/GraphSettingsPanel';
-import Icon from '@/components/site/Icon';
 import {
   DEFAULT_GRAPH_SETTINGS,
   loadGraphSettings,
@@ -19,7 +18,7 @@ type GraphExplorerProps = {
 };
 
 export function GraphExplorer({ concepts, subjects }: GraphExplorerProps) {
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const router = useRouter();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settings, setSettings] = useState<GraphSettings>(DEFAULT_GRAPH_SETTINGS);
 
@@ -35,8 +34,6 @@ export function GraphExplorer({ concepts, subjects }: GraphExplorerProps) {
     });
   };
 
-  const byId = useMemo(() => new Map(concepts.map((c) => [c.id, c])), [concepts]);
-  const selected = selectedId ? byId.get(selectedId) ?? null : null;
   const edgeCount = useMemo(
     () => concepts.reduce((sum, c) => sum + (c.prerequisites?.length ?? 0) + (c.related?.length ?? 0), 0),
     [concepts]
@@ -82,14 +79,13 @@ export function GraphExplorer({ concepts, subjects }: GraphExplorerProps) {
             <GraphCanvas
               concepts={concepts}
               subjects={subjects}
-              selectedId={selectedId}
-              onSelect={setSelectedId}
+              onSelect={(id) => router.push(`/knowledge/${id}/`)}
               settings={settings}
             />
           </div>
           <div className="flex items-center justify-between border-t border-line px-4 py-3 font-mono text-[10px] tracking-wider text-ink-faint">
             <span>GRAPH VIEW · {concepts.length} NODES</span>
-            <span className="hidden sm:inline">点击节点查看章节详情</span>
+            <span className="hidden sm:inline">点击节点直接打开章节</span>
           </div>
         </div>
 
@@ -104,77 +100,6 @@ export function GraphExplorer({ concepts, subjects }: GraphExplorerProps) {
               }}
               onClose={() => setSettingsOpen(false)}
             />
-          ) : selected ? (
-            <div className="card p-5">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="eyebrow">
-                    {subjects.find((s) => s.id === selected.subjectId)?.name ?? selected.subjectId}
-                    {selected.order ? ` · 第 ${selected.order} 站` : ''}
-                  </p>
-                  <h3 className="mt-2 text-lg font-semibold tracking-tight text-ink">{selected.label}</h3>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setSelectedId(null)}
-                  className="rounded-full p-1 text-ink-faint transition-colors hover:text-ink"
-                  aria-label="关闭详情"
-                >
-                  <Icon name="close" size={15} />
-                </button>
-              </div>
-              {selected.summary ? (
-                <p className="mt-3 text-[14px] leading-relaxed text-ink-muted">{selected.summary}</p>
-              ) : null}
-
-              <div className="mt-5">
-                <p className="eyebrow">前置章节</p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {(selected.prerequisites ?? []).length > 0 ? (
-                    (selected.prerequisites ?? []).map((id) => (
-                      <button
-                        key={id}
-                        type="button"
-                        onClick={() => setSelectedId(id)}
-                        className="rounded-pill border border-line bg-elevated px-2.5 py-1 font-mono text-[11px] text-ink-muted transition-colors hover:border-accent/40 hover:text-accent"
-                      >
-                        {byId.get(id)?.label ?? id}
-                      </button>
-                    ))
-                  ) : (
-                    <span className="text-[13px] text-ink-faint">无（起点章节）</span>
-                  )}
-                </div>
-              </div>
-
-              {(selected.related ?? []).length > 0 ? (
-                <div className="mt-4">
-                  <p className="eyebrow">相关章节</p>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {(selected.related ?? []).map((id) => (
-                      <button
-                        key={id}
-                        type="button"
-                        onClick={() => setSelectedId(id)}
-                        className="rounded-pill border border-dashed border-line bg-elevated px-2.5 py-1 font-mono text-[11px] text-ink-muted transition-colors hover:border-accent/40 hover:text-accent"
-                      >
-                        {byId.get(id)?.label ?? id}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-
-              {selected.href ? (
-                <Link
-                  href={selected.href}
-                  className="mt-5 inline-flex items-center gap-1 text-[13px] font-medium text-accent hover:text-accent-hover"
-                >
-                  打开这一章
-                  <Icon name="arrow" size={14} />
-                </Link>
-              ) : null}
-            </div>
           ) : (
             <div className="card p-5">
               <p className="eyebrow">怎么维护这张图</p>
