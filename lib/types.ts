@@ -19,20 +19,15 @@ export type Concept = {
   summary?: string;
   /** 前置概念 id；图谱据此连线，且必须无环 */
   prerequisites?: string[];
+  /** 相关（非前置）概念 id，图谱画成虚线 */
+  related?: string[];
   /** 1=基础 2=进阶 3=拓展 */
   level?: 1 | 2 | 3;
+  /** 章节顺序，有值时图谱按它分列 */
+  order?: number;
+  /** 点击后跳转的页面 */
+  href?: string;
   tags?: string[];
-};
-
-/**
- * 图谱先修边（`content/graph/edges.json`）。
- * `from` 是 `to` 的前置概念；加载时会合并进 `Concept.prerequisites`。
- */
-export type ConceptEdge = {
-  from: string;
-  to: string;
-  /** 可选说明，暂未在页面上展示 */
-  note?: string;
 };
 
 export type Question = {

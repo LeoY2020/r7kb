@@ -24,21 +24,19 @@
 
 ```
 class-kb/content/
-├── graph/
-│   ├── subjects/*.md          # 学科
-│   ├── concepts/**/*.md       # 概念；目录层级 = 层级（基础/进阶/拓展 或 任意目录，frontmatter level 优先）
-│   └── edges.json             # 先修边 [{ from, to }]，from 是 to 的前置
+├── graph/subjects/*.md        # 学科（只供题库 / 资料页筛选与配色）
 ├── quiz/*.json                # 题目；一个学科一个文件 { subject, questions: [] }
 ├── library/items.json         # 资料条目 { resources: [] }
 ├── faq/**/*.md                # 问答（正文就是答案）
 └── knowledge/                 # 知识库（Obsidian vault，见第五节）
 ```
 
+- 学习图谱（`/graph`）不再单独配置概念：节点取自 `knowledge/` 的章节 `index.md`，顺序取自 `_config/chapter-order.json`，边取自 `_config/chapter-links.json`（`prerequisites` / `next` 实线，`related` 虚线）。详见第五节。
 - 所有 `_README.md` 与 `_` / `.` 开头的文件/目录不参与加载（用于说明与配置）。
-- **格式按「有没有正文」分**：有正文的用 Markdown + frontmatter；只有字段的记录用 JSON（题库、资料条目、图谱边）。原因：frontmatter 是手写 YAML 子集，不支持多行字符串与嵌套对象，选项数组、多行题干、边表都不适合塞进去。
+- **格式按「有没有正文」分**：有正文的用 Markdown + frontmatter；只有字段的记录用 JSON（题库、资料条目、章节关联）。原因：frontmatter 是手写 YAML 子集，不支持多行字符串与嵌套对象，选项数组、多行题干、边表都不适合塞进去。
 - Markdown 由 `lib/frontmatter.ts` 解析，格式为 YAML 子集：`key: value`、行内数组 `[a, b]`、块数组（`- item`），支持引号、布尔、数字。
-- JSON 由 `lib/content.ts` 读取，**构建期严格校验**：字段缺失/类型错误、id 重复、`from`/`to` 引用不存在、图谱成环都会抛错并指出文件与位置。
-- 加载器 `lib/content.ts` 只允许在服务端组件 / 构建期使用（`node:fs`）；客户端组件只能通过 props 拿数据。
+- JSON 由 `lib/content.ts` / `lib/vault.ts` 读取，**构建期严格校验**：字段缺失/类型错误、id 重复、章节引用不存在、先修关系成环都会抛错并指出文件与位置。
+- 加载器 `lib/content.ts` / `lib/vault.ts` 只允许在服务端组件 / 构建期使用（`node:fs`）；客户端组件只能通过 props 拿数据。
 - 类型统一放在 `lib/types.ts`（`data/knowledge.ts` 已废弃）。
 
 ### frontmatter 字段
@@ -52,29 +50,33 @@ color: '#0071e3'    # 可选
 ---
 ```
 
-概念 `content/graph/concepts/**/*.md`：
+章节 index `content/knowledge/**/index.md`：
 ```yaml
 ---
-id: linear-function      # 可选，缺省用相对路径
-label: 一次函数           # 可选，缺省用文件名
-subject: math            # 必填（学科 id）
-summary: 形如 y = kx + b 的函数。   # 可选，缺省取正文首段
-level: 1                 # 1/2/3，缺省由目录名（基础/进阶/拓展）推断，再缺省 1
-tags: [函数]
+slug: ch-02                    # 图谱节点 id，chapter-links.json 用它引用
+title: 学习图谱与概念依赖        # 节点文字
+description: 把一门课拆成……     # 节点简介
+tags: [学习图谱, 概念依赖]
+order: 2                       # 同级排序
+chapter: 02-学习图谱与概念依赖
 ---
-正文可写解释，仅取首段作 summary（若无 summary）。
 ```
-> `prerequisites` 已废弃：写在概念 frontmatter 里会构建报错，先修关系改到 `graph/edges.json`。
+> `chapter-links.json` 的 key 就是这里的 `slug`；指着不存在的 slug 或写成标题都会构建报错。
 
-先修边 `content/graph/edges.json`：
+章节关联 `content/knowledge/_config/chapter-links.json`：
 ```json
 {
-  "edges": [
-    { "from": "coordinate-system", "to": "linear-function" },
-    { "from": "linear-function", "to": "quadratic-function", "note": "可选说明" }
-  ]
+  "links": {
+    "ch-02": {
+      "prerequisites": ["ch-01"],
+      "next": ["ch-03"],
+      "related": ["ch-04"]
+    }
+  }
 }
 ```
+- key 是章节 index 的 `slug`；`prerequisites` / `next` 画实线箭头，`related` 画虚线。
+- 引用不存在的章节、或先修关系成环，构建都会报错并打印整条环。
 
 题目 `content/quiz/<subject>.json`：
 ```json

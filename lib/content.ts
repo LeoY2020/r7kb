@@ -1,9 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { parseFrontmatter, toConcept, toFaq, toSubject, type RawDoc } from './frontmatter';
+import { parseFrontmatter, toFaq, toSubject, type RawDoc } from './frontmatter';
+import { getChapterGraph } from './vault';
 import type {
-  Concept,
-  ConceptEdge,
   Faq,
   Question,
   Resource,
@@ -17,11 +16,12 @@ import type {
  *
  * 内容分两种：
  *   正文型 → Markdown + frontmatter
- *     graph/subjects、graph/concepts、faq、knowledge
+ *     graph/subjects、faq、knowledge
  *   记录型 → JSON（没有正文，只有字段）
- *     graph/edges.json、quiz/*.json、library/items.json
+ *     quiz/*.json、library/items.json
  *
- * 所有校验都在这里做：字段缺失、id 重复、引用不存在、图谱成环都会让
+ * 学习图谱由 `lib/vault.ts` 的 getChapterGraph() 从知识库章节生成。
+ * 所有校验都在这里做：字段缺失、id 重复、引用不存在都会让
  * `npm run build` 直接失败，并指出文件与位置，避免静默变成默认值。
  *
  * 客户端组件不要 import 本文件（含 node:fs）。
@@ -175,101 +175,12 @@ export function getSubjects(): Subject[] {
   });
 }
 
-/* ---------------------------- 图谱边 ---------------------------- */
+/* ---------------------------- 图谱 ---------------------------- */
 
-export function getEdges(): ConceptEdge[] {
-  return cached('edges', () => {
-    const data = readJson('graph/edges.json');
-    if (data === null) return [];
-    const root = asObject(data, 'content/graph/edges.json');
-    if (!Array.isArray(root.edges)) fail('content/graph/edges.json 缺少 edges 数组');
-
-    const seen = new Set<string>();
-    return root.edges.map((item, index) => {
-      const where = `content/graph/edges.json → edges[${index}]`;
-      const edge = asObject(item, where);
-      const from = requiredStr(edge.from, where, 'from（前置概念 id）');
-      const to = requiredStr(edge.to, where, 'to（后学概念 id）');
-      if (from === to) fail(`${where} 自己指向自己：${from}`);
-      const key = `${from}->${to}`;
-      if (seen.has(key)) fail(`${where} 重复的边：${key}`);
-      seen.add(key);
-      return { from, to, note: str(edge.note) };
-    });
-  });
-}
-
-/* ---------------------------- 概念 ---------------------------- */
-
-/** 目录名（基础/进阶/拓展）→ 图谱层级 */
-function levelFromPath(relPath: string): 1 | 2 | 3 {
-  if (/基础|入门|基本|初级/.test(relPath)) return 1;
-  if (/进阶|提高|中级/.test(relPath)) return 2;
-  if (/拓展|高级|扩展/.test(relPath)) return 3;
-  return 1;
-}
-
-/** 有向图找环，出错时给出环上的概念 id */
-function assertAcyclic(concepts: Concept[]): void {
-  const byId = new Map(concepts.map((concept) => [concept.id, concept]));
-  const state = new Map<string, 0 | 1 | 2>();
-  const stack: string[] = [];
-
-  const visit = (id: string) => {
-    const current = state.get(id) ?? 0;
-    if (current === 2) return;
-    if (current === 1) {
-      const start = stack.indexOf(id);
-      const cycle = [...stack.slice(start), id].join(' → ');
-      fail(`content/graph/edges.json 让图谱成环：${cycle}`);
-    }
-    state.set(id, 1);
-    stack.push(id);
-    for (const pre of byId.get(id)?.prerequisites ?? []) {
-      if (byId.has(pre)) visit(pre);
-    }
-    stack.pop();
-    state.set(id, 2);
-  };
-
-  for (const concept of concepts) visit(concept.id);
-}
-
-export function getConcepts(): Concept[] {
-  return cached('concepts', () => {
-    const docs = loadDocs(path.join(CONTENT_ROOT, 'graph', 'concepts'));
-    const concepts: Concept[] = [];
-    const byId = new Map<string, Concept>();
-
-    for (const doc of docs) {
-      if (doc.data.prerequisites !== undefined) {
-        fail(
-          `${doc.relPath} 里的 prerequisites 已废弃：先修关系统一写在 content/graph/edges.json`
-        );
-      }
-      const concept = toConcept(doc, fallbackId(doc.relPath));
-      if (byId.has(concept.id)) fail(`概念 id 重复：${concept.id}（${doc.relPath}）`);
-
-      const item: Concept = {
-        ...concept,
-        prerequisites: [],
-        level: doc.data.level === undefined ? levelFromPath(doc.relPath) : concept.level,
-      };
-      byId.set(item.id, item);
-      concepts.push(item);
-    }
-
-    for (const edge of getEdges()) {
-      if (!byId.has(edge.from)) fail(`graph/edges.json 的 from "${edge.from}" 找不到对应概念`);
-      if (!byId.has(edge.to)) fail(`graph/edges.json 的 to "${edge.to}" 找不到对应概念`);
-      const target = byId.get(edge.to) as Concept;
-      target.prerequisites = [...(target.prerequisites ?? []), edge.from];
-    }
-
-    assertAcyclic(concepts);
-    return concepts;
-  });
-}
+/**
+ * 学习图谱不再单独维护概念与边，直接由知识库章节 +
+ * `content/knowledge/_config/chapter-links.json` 生成，见 `lib/vault.ts`。
+ */
 
 /* ---------------------------- 题库 ---------------------------- */
 
@@ -386,7 +297,7 @@ export function getFaqs(): Faq[] {
 export function getStats(): Stats {
   const questions = getQuestions();
   return {
-    concepts: getConcepts().length,
+    concepts: getChapterGraph().concepts.length,
     subjects: getSubjects().length,
     questions: questions.length,
     wrong: questions.filter((q) => q.mastered === false).length,

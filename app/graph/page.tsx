@@ -3,28 +3,30 @@ import CountUp from '@/components/reactbits/CountUp';
 import PageHeader from '@/components/site/PageHeader';
 import GraphExplorer from '@/components/graph/GraphExplorer';
 import Reveal from '@/components/site/Reveal';
-import { getConcepts, getSubjects } from '@/lib/content';
+import { getChapterGraph } from '@/lib/vault';
 
 export const metadata: Metadata = {
   title: '学习图谱',
-  description: '把班级知识库里的概念按先修关系连成一张有向图，看清每个知识点从哪来、往哪去。',
+  description: '把知识库章节按 chapter-links.json 里的先修关系连成一张有向图，看清每个章节从哪来、往哪去。',
 };
 
 export default function GraphPage() {
-  const concepts = getConcepts();
-  const subjects = getSubjects();
-  const levelCount = new Set(concepts.map((c) => c.level ?? 1)).size;
+  const { concepts, subjects } = getChapterGraph();
+  const linkCount = concepts.reduce(
+    (sum, c) => sum + (c.prerequisites?.length ?? 0) + (c.related?.length ?? 0),
+    0
+  );
 
   return (
     <>
       <PageHeader
         latin="GRAPH · 学习图谱"
-        title="每个知识点，都有它的上一站"
-        description="概念按先修关系连成一张有向图。沿着箭头走，就是一条从基础到拓展的学习路径；倒着走，能快速定位自己卡在哪一步。"
+        title="每个章节，都有它的上一站"
+        description="章节按 knowledge 目录 + chapter-links.json 里的先修关系连成一张有向图。沿箭头走，就是一条从基础到拓展的学习路径；倒着走，能快速定位自己卡在哪一步。"
         aside={
           <div className="flex items-center gap-6 rounded-card border border-line bg-surface px-5 py-4 shadow-soft">
             <div>
-              <p className="eyebrow">概念</p>
+              <p className="eyebrow">章节</p>
               <p className="mt-1 text-2xl font-semibold tracking-tight text-ink">
                 <CountUp to={concepts.length} from={0} duration={1.2} startWhen />
                 <span className="ml-1 text-xs font-normal text-ink-faint">个</span>
@@ -32,10 +34,10 @@ export default function GraphPage() {
             </div>
             <div className="h-8 w-px bg-line" />
             <div>
-              <p className="eyebrow">层级</p>
+              <p className="eyebrow">关联</p>
               <p className="mt-1 text-2xl font-semibold tracking-tight text-ink">
-                <CountUp to={levelCount} from={0} duration={1.2} startWhen />
-                <span className="ml-1 text-xs font-normal text-ink-faint">层</span>
+                <CountUp to={linkCount} from={0} duration={1.2} startWhen />
+                <span className="ml-1 text-xs font-normal text-ink-faint">条</span>
               </p>
             </div>
           </div>
@@ -55,16 +57,16 @@ export default function GraphPage() {
             <div className="mt-6 grid gap-6 sm:grid-cols-3">
               {[
                 {
-                  t: '一个概念一个文件',
-                  d: '写在 content/graph/concepts/ 里，目录层级（基础/进阶/拓展）会自动成为图谱层级。',
+                  t: '节点来自章节',
+                  d: 'content/knowledge/ 里每个章节目录的 index.md 就是一个节点，标题与描述自动同步。',
                 },
                 {
-                  t: '边写在 edges.json',
-                  d: '先修关系是一条边，不是正文：在 content/graph/edges.json 里写 { from, to }。',
+                  t: '边写在 chapter-links.json',
+                  d: '在 content/knowledge/_config/chapter-links.json 里写 prerequisites / next / related。',
                 },
                 {
-                  t: '必须无环',
-                  d: '如果绕一圈回到自己，构建会打印出整条环，说明概念拆得不够细。',
+                  t: '引用必须存在且无环',
+                  d: '指向不存在的章节、或先修关系绕回自己，构建都会直接报错并指出位置。',
                 },
               ].map((item) => (
                 <div key={item.t}>

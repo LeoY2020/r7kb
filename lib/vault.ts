@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { asList, asNumber, asString, parseFrontmatter, type Frontmatter } from './frontmatter';
+import type { Concept, Subject } from './types';
 // asNumber / asString 仍用于 frontmatter；JSON 配置用下面的 readString / readNumber。
 
 /**
@@ -359,7 +360,7 @@ export function getChapterRootSlug(): string | undefined {
   });
 }
 
-function getRawChapterLinks(): Record<string, ChapterLinks> {
+export function getRawChapterLinks(): Record<string, ChapterLinks> {
   return cache('chapter-links', () => {
     const file = path.join(CONFIG_ROOT, 'chapter-links.json');
     if (!fs.existsSync(file)) return {};
@@ -409,6 +410,101 @@ export function getChapterLinksForNote(note: VaultNote): ChapterLinkGroups {
     related: entry.related.map((slug) => resolveLink(slug)),
   };
 }
+
+/* ------------------------------------------------------------------ */
+/* 学习图谱：知识库章节 + chapter-links.json                            */
+/* ------------------------------------------------------------------ */
+
+const GRAPH_SUBJECT: Subject = { id: 'knowledge', name: '智能电子书', color: '#0071e3' };
+
+function assertGraphAcyclic(concepts: Concept[]): void {
+  const byId = new Map(concepts.map((concept) => [concept.id, concept]));
+  const state = new Map<string, 0 | 1 | 2>();
+  const stack: string[] = [];
+
+  const visit = (id: string) => {
+    const current = state.get(id) ?? 0;
+    if (current === 2) return;
+    if (current === 1) {
+      const start = stack.indexOf(id);
+      throw new Error(
+        `[chapter-graph] chapter-links.json 让章节成环：${[...stack.slice(start), id].join(' → ')}`
+      );
+    }
+    state.set(id, 1);
+    stack.push(id);
+    for (const pre of byId.get(id)?.prerequisites ?? []) {
+      if (byId.has(pre)) visit(pre);
+    }
+    stack.pop();
+    state.set(id, 2);
+  };
+
+  for (const concept of concepts) visit(concept.id);
+}
+
+/**
+ * 学习图谱节点与边全部来自知识库：
+ * - 节点：`content/knowledge/` 里的章节 index 笔记（顺序取 `_config/chapter-order.json`）
+ * - 边：`_config/chapter-links.json` 的 prerequisites / next（实线箭头）与 related（虚线）
+ */
+export function getChapterGraph(): { concepts: Concept[]; subjects: Subject[] } {
+  return cache('chapter-graph', () => {
+    const notes = getVaultNotes();
+    const bySlug = new Map(notes.map((note) => [note.slug, note]));
+    const links = getRawChapterLinks();
+
+    const slugs: string[] = [];
+    for (const chapter of getChapterOrder()) {
+      if (bySlug.has(chapter.slug) && !slugs.includes(chapter.slug)) slugs.push(chapter.slug);
+    }
+    for (const slug of Object.keys(links)) {
+      if (bySlug.has(slug) && !slugs.includes(slug)) slugs.push(slug);
+    }
+    if (slugs.length === 0) return { concepts: [], subjects: [] };
+
+    const known = new Set(slugs);
+    const check = (owner: string, ids: string[]): string[] =>
+      ids.map((id) => {
+        if (!known.has(id)) {
+          throw new Error(
+            `[chapter-graph] chapter-links.json 的 "${owner}" 指向了不存在的章节 "${id}"`
+          );
+        }
+        return id;
+      });
+
+    const concepts = slugs.map((slug, index) => {
+      const note = bySlug.get(slug) as VaultNote;
+      const entry = links[slug] ?? { prerequisites: [], next: [], related: [] };
+
+      const prerequisites = [...check(slug, entry.prerequisites)];
+      // next 与 prerequisites 描述的是同一条边，只写 next 时补上反向关系
+      for (const [from, other] of Object.entries(links)) {
+        if (other.next.includes(slug) && known.has(from) && !prerequisites.includes(from)) {
+          prerequisites.push(from);
+        }
+      }
+      const related = check(slug, entry.related).filter((id) => id !== slug);
+
+      return {
+        id: slug,
+        label: note.title,
+        summary: note.description,
+        subjectId: GRAPH_SUBJECT.id,
+        prerequisites,
+        related: [...new Set(related)],
+        order: index + 1,
+        href: `/knowledge/${slug}/`,
+        tags: note.tags,
+      } satisfies Concept;
+    });
+
+    assertGraphAcyclic(concepts);
+    return { concepts, subjects: [GRAPH_SUBJECT] };
+  });
+}
+
 
 /* ------------------------------------------------------------------ */
 /* 双链解析 / 反向链接                                                 */

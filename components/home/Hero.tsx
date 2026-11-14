@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import Particles from '@/components/reactbits/Particles';
+import HeroParticles from '@/components/home/HeroParticles';
 import ShinyText from '@/components/reactbits/ShinyText';
 import RotatingText from '@/components/reactbits/RotatingText';
 import CountUp from '@/components/reactbits/CountUp';
@@ -21,20 +21,7 @@ export function Hero() {
   return (
     <section className="relative overflow-hidden pt-36 sm:pt-44">
       {/* 极淡的粒子：只给首屏一点空气感 */}
-      <div className="pointer-events-none absolute inset-0 -z-10">
-        <Particles
-          particleColors={['#0071e3', '#5e5ce6', '#c7c7cc']}
-          particleCount={80}
-          particleSpread={14}
-          speed={0.04}
-          particleBaseSize={70}
-          sizeRandomness={1.4}
-          alphaParticles
-          lightMode
-          disableRotation
-          className="opacity-50 [mask-image:linear-gradient(to_bottom,black,transparent_72%)]"
-        />
-      </div>
+      <HeroParticles />
 
       <div className="container-page text-center">
         <span className="pill mx-auto">

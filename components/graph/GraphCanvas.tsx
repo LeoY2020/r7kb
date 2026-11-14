@@ -24,7 +24,10 @@ type Placed = { concept: Concept; x: number; y: number; color: string };
 
 /**
  * 纯 SVG 的学习图谱画布：不依赖 vis-network 等图形库，
- * 静态导出时也能直接渲染。概念按 level 分列，前置关系画成箭头。
+ * 静态导出时也能直接渲染。
+ * - 章节图谱（节点带 order）：纵向排布，节点文字保持可读；
+ * - 其它情况：按 level 分列。
+ * 前置关系画实线箭头，related 画虚线。
  */
 export function GraphCanvas({
   concepts,
@@ -34,45 +37,105 @@ export function GraphCanvas({
   levelFilter = null,
 }: GraphCanvasProps) {
   const visible = concepts.filter((c) => (levelFilter ? c.level === levelFilter : true));
-
-  const byLevel = new Map<number, Concept[]>();
-  for (const c of visible) {
-    const lv = c.level ?? 1;
-    const arr = byLevel.get(lv) ?? [];
-    arr.push(c);
-    byLevel.set(lv, arr);
-  }
-
-  const levelKeys = Array.from(byLevel.keys()).sort((a, b) => a - b);
-  const maxRows = Math.max(1, ...Array.from(byLevel.values()).map((v) => v.length));
-
-  const height = Math.max(460, PAD_Y * 2 + (maxRows - 1) * 92);
-  const width = PAD_X * 2 + Math.max(1, levelKeys.length - 1) * COL_GAP;
-
-  const placed: Placed[] = [];
-  levelKeys.forEach((lv, col) => {
-    const arr = byLevel.get(lv) ?? [];
-    arr.forEach((c, row) => {
-      const step = height / (arr.length + 1);
-      const x = levelKeys.length === 1 ? width / 2 : PAD_X + col * COL_GAP;
-      const y = arr.length === 1 ? height / 2 : step * (row + 1);
-      const subjectColor = subjects.find((s) => s.id === c.subjectId)?.color;
-      placed.push({ concept: c, x, y, color: subjectColor ?? levelColor[lv] ?? '#0071e3' });
-    });
-  });
-
-  const posById = new Map(placed.map((p) => [p.concept.id, p]));
+  const useOrder = visible.some((c) => c.order !== undefined);
 
   if (visible.length === 0) {
     return <GhostGraph />;
   }
+
+  let width: number;
+  let height: number;
+  const placed: Placed[] = [];
+  const columnHeaders: { key: number; x: number }[] = [];
+
+  if (useOrder) {
+    const ordered = [...visible].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    const rowGap = 78;
+    width = 720;
+    height = Math.max(380, PAD_Y * 2 + (ordered.length - 1) * rowGap);
+    ordered.forEach((c, index) => {
+      const subjectColor = subjects.find((s) => s.id === c.subjectId)?.color;
+      placed.push({
+        concept: c,
+        x: width / 2,
+        y: ordered.length === 1 ? height / 2 : PAD_Y + index * rowGap,
+        color: subjectColor ?? levelColor[(index % 3) + 1] ?? '#0071e3',
+      });
+    });
+  } else {
+    const byLevel = new Map<number, Concept[]>();
+    for (const c of visible) {
+      const lv = c.level ?? 1;
+      const arr = byLevel.get(lv) ?? [];
+      arr.push(c);
+      byLevel.set(lv, arr);
+    }
+
+    const levelKeys = Array.from(byLevel.keys()).sort((a, b) => a - b);
+    const maxRows = Math.max(1, ...Array.from(byLevel.values()).map((v) => v.length));
+
+    height = Math.max(460, PAD_Y * 2 + (maxRows - 1) * 92);
+    width = PAD_X * 2 + Math.max(1, levelKeys.length - 1) * COL_GAP;
+
+    levelKeys.forEach((lv, col) => {
+      const arr = byLevel.get(lv) ?? [];
+      const x = levelKeys.length === 1 ? width / 2 : PAD_X + col * COL_GAP;
+      columnHeaders.push({ key: lv, x });
+      arr.forEach((c, row) => {
+        const step = height / (arr.length + 1);
+        const y = arr.length === 1 ? height / 2 : step * (row + 1);
+        const subjectColor = subjects.find((s) => s.id === c.subjectId)?.color;
+        placed.push({
+          concept: c,
+          x,
+          y,
+          color: subjectColor ?? levelColor[lv] ?? '#0071e3',
+        });
+      });
+    });
+  }
+
+  const posById = new Map(placed.map((p) => [p.concept.id, p]));
+  // 纵向章节图谱给节点更大宽度，避免章节名被截断
+  const nodeW = useOrder ? 210 : NODE_W;
+
+  const edgePath = (from: Placed, to: Placed, related: boolean) => {
+    if (useOrder) {
+      if (related) {
+        const x1 = from.x + nodeW / 2;
+        const x2 = to.x + nodeW / 2;
+        const y1 = from.y;
+        const y2 = to.y;
+        return `M ${x1} ${y1} C ${x1 + 72} ${y1 + (y2 - y1) / 3}, ${x2 + 72} ${y2 - (y2 - y1) / 3}, ${x2} ${y2}`;
+      }
+      const y1 = from.y + NODE_H / 2;
+      const y2 = to.y - NODE_H / 2;
+      const mid = (y1 + y2) / 2;
+      return `M ${from.x} ${y1} C ${from.x} ${mid}, ${to.x} ${mid}, ${to.x} ${y2}`;
+    }
+
+    if (related) {
+      const x1 = from.x;
+      const x2 = to.x;
+      const y1 = from.y + NODE_H / 2;
+      const y2 = to.y + NODE_H / 2;
+      return `M ${x1} ${y1} C ${x1 + (x2 - x1) / 3} ${y1 + 72}, ${x2 - (x2 - x1) / 3} ${y2 + 72}, ${x2} ${y2}`;
+    }
+
+    const x1 = from.x + nodeW / 2;
+    const y1 = from.y;
+    const x2 = to.x - nodeW / 2;
+    const y2 = to.y;
+    const mid = (x1 + x2) / 2;
+    return `M ${x1} ${y1} C ${mid} ${y1}, ${mid} ${y2}, ${x2} ${y2}`;
+  };
 
   return (
     <svg
       viewBox={`0 0 ${width} ${height}`}
       className="h-auto w-full"
       role="img"
-      aria-label="学习图谱：概念与前置关系"
+      aria-label="学习图谱：章节与关联关系"
     >
       <defs>
         <marker
@@ -88,16 +151,16 @@ export function GraphCanvas({
         </marker>
       </defs>
 
-      {levelKeys.map((lv, col) => (
+      {columnHeaders.map(({ key, x }) => (
         <text
-          key={`lv-${lv}`}
-          x={levelKeys.length === 1 ? width / 2 : PAD_X + col * COL_GAP}
+          key={`lv-${key}`}
+          x={x}
           y={34}
           textAnchor="middle"
           className="font-mono"
           style={{ fontSize: 11, letterSpacing: '0.22em', fill: 'rgb(var(--ink-faint))' }}
         >
-          {lv === 1 ? 'BASIC' : lv === 2 ? 'ADVANCED' : 'EXTENDED'}
+          {key === 1 ? 'BASIC' : key === 2 ? 'ADVANCED' : 'EXTENDED'}
         </text>
       ))}
 
@@ -105,20 +168,33 @@ export function GraphCanvas({
         (p.concept.prerequisites ?? []).map((preId) => {
           const from = posById.get(preId);
           if (!from) return null;
-          const x1 = from.x + NODE_W / 2;
-          const y1 = from.y;
-          const x2 = p.x - NODE_W / 2;
-          const y2 = p.y;
-          const mid = (x1 + x2) / 2;
-
           return (
             <path
               key={`${preId}-${p.concept.id}`}
-              d={`M ${x1} ${y1} C ${mid} ${y1}, ${mid} ${y2}, ${x2} ${y2}`}
+              d={edgePath(from, p, false)}
               fill="none"
               style={{ stroke: 'rgb(var(--ink) / 0.18)' }}
               strokeWidth={1.2}
               markerEnd="url(#graph-arrow)"
+            />
+          );
+        })
+      )}
+
+      {/* related 只画一次，用虚线区别于先修箭头 */}
+      {placed.map((p) =>
+        (p.concept.related ?? []).map((relatedId) => {
+          if (p.concept.id > relatedId) return null;
+          const other = posById.get(relatedId);
+          if (!other) return null;
+          return (
+            <path
+              key={`rel-${p.concept.id}-${relatedId}`}
+              d={edgePath(p, other, true)}
+              fill="none"
+              strokeDasharray="4 4"
+              style={{ stroke: 'rgb(var(--accent) / 0.35)' }}
+              strokeWidth={1}
             />
           );
         })
@@ -142,9 +218,9 @@ export function GraphCanvas({
             }}
           >
             <rect
-              x={p.x - NODE_W / 2}
+              x={p.x - nodeW / 2}
               y={p.y - NODE_H / 2}
-              width={NODE_W}
+              width={nodeW}
               height={NODE_H}
               rx={12}
               style={{
@@ -153,15 +229,15 @@ export function GraphCanvas({
               }}
               strokeWidth={selected ? 1.8 : 1}
             />
-            <circle cx={p.x - NODE_W / 2 + 14} cy={p.y} r={3.5} fill={p.color} />
+            <circle cx={p.x - nodeW / 2 + 14} cy={p.y} r={3.5} fill={p.color} />
             <text
               x={p.x + 8}
               y={p.y + 4}
               textAnchor="middle"
               style={{ fontSize: 12.5, fill: 'rgb(var(--ink))' }}
             >
-              {p.concept.label.length > 12
-                ? `${p.concept.label.slice(0, 12)}…`
+              {p.concept.label.length > 14
+                ? `${p.concept.label.slice(0, 14)}…`
                 : p.concept.label}
             </text>
           </g>
@@ -236,7 +312,7 @@ function GhostGraph() {
         textAnchor="middle"
         style={{ fontSize: 3, letterSpacing: '0.4px', fill: 'rgb(var(--ink-faint))' }}
       >
-        概念入库后，这里会自动连成一张有向图
+        章节入库后，这里会自动连成一张有向图
       </text>
     </svg>
   );

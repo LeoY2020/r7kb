@@ -3,8 +3,8 @@
 一个给班级用的知识库站点：**学习图谱、题库与错题本、资料库、常见问题** 四个入口。
 
 > 内容全部放在 `content/`，按「有没有正文」分两种格式：
-> **正文型**（知识库笔记、FAQ、概念、学科）用 Markdown + frontmatter；
-> **记录型**（题库、资料条目、图谱的边）用 JSON——它们没有正文，只有字段。
+> **正文型**（知识库笔记、FAQ、学科）用 Markdown + frontmatter；
+> **记录型**（题库、资料条目、章节关联）用 JSON——它们没有正文，只有字段。
 > 页面里的空状态、筛选器、微交互都是真实可操作的，加文件就会长出来。
 
 ---
@@ -67,7 +67,7 @@ class-kb/
 │   └── site/                # 导航、页脚、空状态、图标、滚动揭示等
 ├── content/                 # 站点内容：正文用 Markdown，记录用 JSON
 │   ├── knowledge/           # 知识库 vault：笔记、章节 index.md、_config/*.json
-│   ├── graph/               # 学习图谱：subjects/ 与 concepts/（MD）+ edges.json
+│   ├── graph/               # 学科配置：subjects/（供题库/资料筛选，图谱不再读这里）
 │   ├── quiz/                # 题库：每学科一个 .json（错题本由浏览器本地保存）
 │   ├── library/             # 资料条目：items.json（文件本体放 public/resources/）
 │   └── faq/                 # 常见问题（MD，正文就是答案）
@@ -87,7 +87,7 @@ class-kb/
 
 | 有正文（要排版、要双链） | 只有字段（一条记录） |
 | --- | --- |
-| 知识库笔记、FAQ、概念说明、学科 | 题库、资料条目、图谱的先修边 |
+| 知识库笔记、FAQ、学科 | 题库、资料条目、章节关联边 |
 | Markdown + frontmatter | JSON |
 
 ### 通用规则（先看这里）
@@ -112,7 +112,7 @@ class-kb/
 **JSON 部分：**
 
 - 不支持注释、不支持尾逗号；字符串里的换行写成 `\n`。
-- 构建时会校验字段、id 唯一、引用是否存在、图谱是否成环；**写错会直接让 `npm run build` 失败**，并指出文件和位置，不会静默变成默认值。
+- 构建时会校验字段、id 唯一、引用是否存在、章节关联是否成环；**写错会直接让 `npm run build` 失败**，并指出文件和位置，不会静默变成默认值。
 - 站点是静态导出，没有运行时读取。改完要 `npm run build`（或运行 `deploy.bat`）才会生效。
 
 ### 1. 知识库笔记（`content/knowledge/`）
@@ -178,53 +178,31 @@ updated: 2026-10-01
 - `chapter-links.json`：`{ "links": { "<章节 index 的 slug>": { "prerequisites": ["slug"], "next": ["slug"], "related": ["slug"] } } }` 笔记底部的「先读这些 / 接下来读 / 相关章节」
 - `tag-map.json`：`{ "tags": { "标签": { "color": "#3b82f6", "chapters": ["slug"] } } }` 标签颜色
 
-### 2. 学习图谱（`content/graph/`）
+### 2. 学习图谱（`/graph`，数据来自知识库）
 
-分三部分：学科和概念用 Markdown，**先修关系单独写在 `edges.json`**。
+图谱不再单独维护概念与边，而是直接由知识库章节生成：
 
-**学科** `content/graph/subjects/*.md`：
-
-```md
----
-id: math
-name: 数学
-color: '#3b82f6'
----
-```
-
-**概念** `content/graph/concepts/**/*.md`：
-
-```md
----
-id: linear-function
-label: 一次函数
-subject: math
-level: 1
-summary: 形如 y = kx + b（k ≠ 0）的函数，图像是一条直线。
-tags: [函数]
----
-```
-
-- `id` 必须唯一，`edges.json` 用它来连边。
-- `subject` 填学科的 `id`。
-- `level` 只认 1 / 2 / 3；不写时按目录名推断：`基础/入门` → 1、`进阶/提高` → 2、`拓展/高级` → 3。
-- 正文可留空，`summary` 不写会取正文首段。
-- **不要在这里写 `prerequisites`**：写了会构建报错，统一挪到 `edges.json`。
-
-**先修边** `content/graph/edges.json`，`from` 是 `to` 的前置：
+- **节点**：`content/knowledge/` 里每个章节目录的 `index.md`（标题、`description` 自动成为节点文字与简介）
+- **顺序**：`content/knowledge/_config/chapter-order.json`
+- **边**：`content/knowledge/_config/chapter-links.json`
+  - `prerequisites` / `next` 画实线箭头（`next` 会补成下一章的 `prerequisites`）
+  - `related` 画虚线
 
 ```json
 {
-  "edges": [
-    { "from": "coordinate-system", "to": "linear-function" },
-    { "from": "linear-function", "to": "quadratic-function", "note": "先掌握一次函数再看抛物线" }
-  ]
+  "links": {
+    "ch-02": {
+      "prerequisites": ["ch-01"],
+      "next": ["ch-03"],
+      "related": ["ch-04"]
+    }
+  }
 }
 ```
 
-- `from` / `to` 填概念 `id`（不是标题），必须是已存在的概念，否则构建报错。
-- 同一条边只能写一次；不能成环，成环时构建会打印出整条环。
-- 边的顺序不影响布局，图谱会自动分层。
+- slug 必须是已存在的章节 index 的 `slug`，否则构建报错。
+- 先修关系不能成环，成环时构建会打印出整条环。
+- `content/graph/subjects/*.md` 仍保留，但只用于题库/资料页的学科筛选与配色，不参与图谱。
 
 ### 3. 题库（`content/quiz/`）
 
@@ -302,7 +280,7 @@ category: 方法
 
 1. `npm run dev`，打开对应页面确认新条目出现；
 2. 知识库笔记直接访问 `/knowledge/<slug>/` 不应 404；
-3. 图谱缺箭头，通常是 `edges.json` 的 `from` / `to` 写成了标题而不是概念 `id`；
+3. 图谱缺箭头，通常是 `chapter-links.json` 里写成了章节标题而不是 index 笔记的 `slug`；
 4. `npm run build` 无报错，再按下面的「部署与推送」发布。内容格式写错时构建会直接停下并指出文件与位置。
 
 ---
@@ -385,7 +363,7 @@ git push origin main
 | React Bits | `BlurText` | 区块标题的模糊聚焦入场 |
 | React Bits | `ClickSpark` | CTA 区块的点击火花 |
 | React Bits | `Dock` | 桌面端悬浮快捷导航 |
-| React Bits Micro | `RubberSegment` | 资料类型 / 图谱层级 / 题库状态切换 |
+| React Bits Micro | `RubberSegment` | 资料类型 / 题库状态切换 |
 | React Bits Micro | `SquishSwitch` | 「显示解析」开关 |
 | React Bits Micro | `SpringCheck` | 题目「标记掌握」、清单勾选 |
 | React Bits Micro | `PulseHeart` | 资料收藏 / 点赞 |

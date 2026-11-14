@@ -1,10 +1,10 @@
 import Link from 'next/link';
 import { mainNav, site } from '@/data/site';
-import { getConcepts, getFaqs, getQuestions, getResources } from '@/lib/content';
+import { getChapterGraph } from '@/lib/vault';
+import { getFaqs, getQuestions, getResources } from '@/lib/content';
 
 const contentFiles = [
-  { path: 'content/graph/', label: '学科与概念（目录层级 = 图谱层级）' },
-  { path: 'content/knowledge/', label: '智能电子书 Obsidian 目录 + 章节关联配置' },
+  { path: 'content/knowledge/', label: '智能电子书 Obsidian 目录 + 章节关联配置（图谱数据源）' },
   { path: 'content/quiz/', label: '题库 Markdown' },
   { path: 'content/library/', label: '资料条目；原文件放 public/resources/' },
   { path: 'content/faq/', label: '常见问题 Markdown' },
@@ -13,7 +13,7 @@ const contentFiles = [
 
 export function Footer() {
   const classLine = [site.grade, site.className].filter(Boolean).join(' · ');
-  const concepts = getConcepts();
+  const { concepts } = getChapterGraph();
   const questions = getQuestions();
   const resources = getResources();
   const faqs = getFaqs();
