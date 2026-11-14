@@ -27,12 +27,18 @@ type GNode = {
   vy: number;
   fx: number | null;
   fy: number | null;
+  /** 透明度过渡值（1 = 高亮，0.2 = 淡出） */
+  fade: number;
+  /** 颜色过渡值（0 = 默认色，1 = 强调色） */
+  near: number;
 };
 
 type GLink = {
   source: GNode;
   target: GNode;
   kind: 'pre' | 'rel' | 'tag';
+  fade: number;
+  near: number;
 };
 
 type Palette = {
@@ -81,6 +87,15 @@ function readPalette(canvas: HTMLCanvasElement): Palette {
 function rgba(rgb: string, alpha: number): string {
   const parts = rgb.trim().split(/[\s,]+/).join(', ');
   return `rgba(${parts}, ${alpha})`;
+}
+
+/** 两个 "r g b" / "r, g, b" 颜色按 t 混合 */
+function mixRgb(from: string, to: string, t: number): string {
+  if (t <= 0.001) return from;
+  if (t >= 0.999) return to;
+  const a = from.trim().split(/[\s,]+/).map(Number);
+  const b = to.trim().split(/[\s,]+/).map(Number);
+  return a.map((value, index) => Math.round(value + ((b[index] ?? value) - value) * t)).join(', ');
 }
 
 function hashString(value: string): number {
@@ -152,6 +167,8 @@ export default function GraphCanvas({
         vy: 0,
         fx: null,
         fy: null,
+        fade: existing?.fade ?? 1,
+        near: existing?.near ?? 0,
       });
       index += 1;
     }
@@ -161,7 +178,7 @@ export default function GraphCanvas({
       const source = next.get(link.source);
       const target = next.get(link.target);
       if (!source || !target) continue;
-      links.push({ source, target, kind: link.kind });
+      links.push({ source, target, kind: link.kind, fade: 1, near: 0 });
       degree.set(source.id, (degree.get(source.id) ?? 0) + 1);
       degree.set(target.id, (degree.get(target.id) ?? 0) + 1);
     }
@@ -378,14 +395,26 @@ export default function GraphCanvas({
         y: state.panY + node.y * scale,
       });
 
+      // 高亮切换的过渡（每帧向目标值靠近，和 Obsidian 的 0.9 平滑类似）
+      const SMOOTH = 0.18;
+      let animating = false;
+      const step = (item: { fade: number; near: number }, fadeTarget: number, nearTarget: number) => {
+        item.fade += (fadeTarget - item.fade) * SMOOTH;
+        item.near += (nearTarget - item.near) * SMOOTH;
+        if (Math.abs(item.fade - fadeTarget) > 0.004 || Math.abs(item.near - nearTarget) > 0.004) {
+          animating = true;
+        }
+      };
+
       // 连线
       for (const link of state.links) {
         const a = toScreen(link.source);
         const b = toScreen(link.target);
         const connected = !highlightId || highlightId === link.source.id || highlightId === link.target.id;
-        const alpha = connected ? 1 : DIM_ALPHA;
         const isHighlight = highlightId !== null && connected;
-        ctx.strokeStyle = rgba(isHighlight ? palette.lineHighlight : palette.line, (isHighlight ? 0.55 : 0.38) * alpha);
+        step(link, connected ? 1 : DIM_ALPHA, isHighlight ? 1 : 0);
+
+        ctx.strokeStyle = rgba(mixRgb(palette.line, palette.lineHighlight, link.near), (0.38 + 0.17 * link.near) * link.fade);
         ctx.lineWidth = cfg.lineSizeMultiplier;
         if (link.kind === 'rel') ctx.setLineDash([5, 5]);
         else ctx.setLineDash([]);
@@ -405,7 +434,7 @@ export default function GraphCanvas({
             const size = 2 * Math.sqrt(cfg.lineSizeMultiplier);
             const tipX = b.x - (dx / distance) * (targetRadius + 1);
             const tipY = b.y - (dy / distance) * (targetRadius + 1);
-            ctx.fillStyle = rgba(palette.text, 0.55 * arrowFade * alpha);
+            ctx.fillStyle = rgba(palette.text, 0.55 * arrowFade * link.fade);
             ctx.beginPath();
             ctx.moveTo(tipX, tipY);
             ctx.lineTo(
@@ -426,27 +455,25 @@ export default function GraphCanvas({
       for (const node of state.nodes.values()) {
         const point = toScreen(node);
         const radius = screenRadius(node);
+        const isHighlight = highlightId === node.id;
+        const connected = !highlightId || isHighlight || (neighbors?.has(node.id) ?? false);
+        step(node, connected ? 1 : DIM_ALPHA, isHighlight ? 1 : 0);
         if (point.x < -radius - 120 || point.x > width + radius + 120) continue;
         if (point.y < -radius - 120 || point.y > height + radius + 120) continue;
 
-        const isHighlight = highlightId === node.id;
-        const connected = !highlightId || isHighlight || (neighbors?.has(node.id) ?? false);
-        const alpha = connected ? 1 : DIM_ALPHA;
+        let base = palette.node;
+        if (node.type === 'tag') base = palette.nodeTag;
+        if (node.color) base = hexToRgb(node.color) ?? base;
 
-        let fill = palette.node;
-        if (node.type === 'tag') fill = palette.nodeTag;
-        if (node.color) fill = hexToRgb(node.color) ?? fill;
-        if (isHighlight) fill = palette.focused;
-
-        ctx.globalAlpha = alpha;
-        ctx.fillStyle = rgba(fill, 0.95);
+        ctx.globalAlpha = node.fade;
+        ctx.fillStyle = rgba(mixRgb(base, palette.focused, node.near), 0.95);
         ctx.beginPath();
         ctx.arc(point.x, point.y, radius, 0, Math.PI * 2);
         ctx.fill();
 
         // 选中 / 悬停 / 拖拽：Obsidian 的一圈细描边
-        if (isHighlight) {
-          ctx.strokeStyle = rgba(palette.focused, 0.9);
+        if (node.near > 0.01) {
+          ctx.strokeStyle = rgba(palette.focused, 0.9 * node.near);
           ctx.lineWidth = 1;
           ctx.beginPath();
           ctx.arc(point.x, point.y, radius + 0.5, 0, Math.PI * 2);
@@ -458,13 +485,15 @@ export default function GraphCanvas({
           ctx.font = `500 ${fontSize}px ui-sans-serif, -apple-system, "Segoe UI", "Microsoft YaHei Light", sans-serif`;
           ctx.textAlign = 'center';
           ctx.textBaseline = 'top';
-          const textAlpha = (isHighlight ? 1 : labelFade) * alpha;
+          const textAlpha = (labelFade * (1 - node.near) + node.near) * node.fade;
           ctx.fillStyle = rgba(palette.text, textAlpha);
           const maxWidth = 260;
           ctx.fillText(truncate(ctx, node.label, maxWidth), point.x, point.y + radius + 5);
         }
         ctx.globalAlpha = 1;
       }
+
+      return animating;
     };
 
     /* ---------------------------- 主循环 ---------------------------- */
@@ -508,8 +537,7 @@ export default function GraphCanvas({
         moving = true;
       }
       if (moving || state.dirty) {
-        state.dirty = false;
-        draw();
+        state.dirty = draw();
       }
       raf = window.requestAnimationFrame(frame);
     };
