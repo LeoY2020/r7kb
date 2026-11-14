@@ -38,25 +38,39 @@ export default function HomeBackground() {
             : 'radial-gradient(ellipse 90% 62% at 50% 0%, rgba(147,197,253,0.8) 0%, rgba(219,234,254,0.6) 46%, rgba(255,255,255,0) 80%), radial-gradient(ellipse 55% 38% at 82% 26%, rgba(56,189,248,0.32) 0%, rgba(255,255,255,0) 70%)',
         }}
       />
-      <GradientASCII
-        colors={dark ? PALETTE.dark : PALETTE.light}
-        shape="horizon"
-        characters=" =+xX0S8#@"
-        cellSize={20}
-        density={0.7}
-        glyphOpacity={dark ? 0.55 : 0.42}
-        gradientOpacity={dark ? 0.85 : 0.7}
-        glow={0.22}
-        flicker={0.14}
-        softness={0.55}
-        grain={0.06}
-        flow={0.45}
-        speed={0.4}
-        mouseInteraction={false}
-        clickEffect="none"
-        lightMode={!dark}
-        className="h-full w-full"
-      />
+      {/*
+        GradientASCII 自己的入场是「灰 → 上色」，中间那帧是发灰的。
+        这里让它整体从透明淡入，入场期间由下面的蓝色 CSS 渐变承托，
+        就不会出现整屏浅灰。
+      */}
+      <div
+        className="absolute inset-0"
+        style={{
+          animation: 'home-bg-in 1100ms cubic-bezier(0.22, 1, 0.36, 1) both',
+        }}
+      >
+        <GradientASCII
+          colors={dark ? PALETTE.dark : PALETTE.light}
+          shape="horizon"
+          /* 组件自带的入场会先出一帧整屏浅灰，改由外层透明淡入承担入场 */
+          intro={false}
+          characters=" =+xX0S8#@"
+          cellSize={20}
+          density={0.7}
+          glyphOpacity={dark ? 0.55 : 0.42}
+          gradientOpacity={dark ? 0.85 : 0.7}
+          glow={0.22}
+          flicker={0.14}
+          softness={0.55}
+          grain={0.06}
+          flow={0.45}
+          speed={0.4}
+          mouseInteraction={false}
+          clickEffect="none"
+          lightMode={!dark}
+          className="h-full w-full"
+        />
+      </div>
     </div>
   );
 }
