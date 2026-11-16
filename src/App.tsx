@@ -9,8 +9,9 @@ import QuestionsPage from './pages/QuestionsPage';
 import GraphPage from './pages/GraphPage';
 import LibraryPage from './pages/LibraryPage';
 import PublishPage from './pages/PublishPage';
+import AboutPage from './pages/AboutPage';
 
-export type Route = 'dashboard' | 'notes' | 'questions' | 'graph' | 'library' | 'publish';
+export type Route = 'dashboard' | 'notes' | 'questions' | 'graph' | 'library' | 'publish' | 'about';
 
 const ROUTES: { id: Route; label: string; icon: string; title: string; sub: string }[] = [
   { id: 'dashboard', label: '概览', icon: 'home', title: '工作台概览', sub: '今天的知识库状态' },
@@ -19,6 +20,7 @@ const ROUTES: { id: Route; label: string; icon: string; title: string; sub: stri
   { id: 'graph', label: '学习图谱', icon: 'graph', title: '学习图谱', sub: '拖动节点、拉线建立关系' },
   { id: 'library', label: '资料库', icon: 'library', title: '资料库', sub: '上传文件并填写展示信息' },
   { id: 'publish', label: '发布', icon: 'publish', title: '发布中心', sub: '提交到 inside 分支并自动构建' },
+  { id: 'about', label: '关于', icon: 'info', title: '关于', sub: '知识库的来龙去脉与使用方法' },
 ];
 
 function useHashRoute(): [Route, (route: Route) => void] {
@@ -161,6 +163,7 @@ function Studio({ session }: { session: SessionInfo }) {
           {route === 'graph' ? <GraphPage /> : null}
           {route === 'library' ? <LibraryPage /> : null}
           {route === 'publish' ? <PublishPage /> : null}
+          {route === 'about' ? <AboutPage /> : null}
         </main>
       </div>
     </div>
