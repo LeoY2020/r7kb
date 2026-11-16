@@ -235,6 +235,8 @@ updated: 2026-10-01
 - `mastered` 只是初始状态；页面上的「已掌握」勾选只存在内存里，刷新会重置。
 - 错题本（`/mistakes`）的数据保存在浏览器 localStorage（键 `class-kb-mistakes-v1`），增删改和导入导出都在本地，**不会回写这些 JSON**。
 
+知识库笔记里的 `<question>…</question>` 块也会自动并入题库，写法见 [知识库 Markdown 格式规范](docs/KNOWLEDGE-FORMAT.md)。
+
 ### 4. 资料库（`content/library/`）
 
 所有条目登记在 `items.json` 一张表里，**文件本体放 `public/resources/`**。

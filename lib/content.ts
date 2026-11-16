@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { parseFrontmatter, toFaq, toSubject, type RawDoc } from './frontmatter';
+import { getKnowledgeQuestions } from './knowledge-questions';
 import { getChapterGraph } from './vault';
 import type {
   Faq,
@@ -231,6 +232,15 @@ export function getQuestions(): Question[] {
         seen.add(question.id);
         questions.push(question);
       });
+    }
+
+    // 知识库笔记里的 <question> 块自动并入题库
+    for (const question of getKnowledgeQuestions()) {
+      if (seen.has(question.id)) {
+        fail(`题目 id 重复：${question.id}（来自知识库笔记，与题库 JSON 或其它笔记冲突）`);
+      }
+      seen.add(question.id);
+      questions.push(question);
     }
 
     return questions;
