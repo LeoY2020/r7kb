@@ -1,0 +1,61 @@
+# 部署到 r7kb-web 的 GitHub Actions 工作流（放在 r7kb-web 仓库的 .github/workflows/ 下）
+# 触发：教师工作台发布后调用 repository_dispatch(publish-inside)
+# 作用：拉取 r7kb@inside 源码 → next build → 把静态产物提交到 r7kb-web@inside
+
+name: build-inside-and-publish
+
+on:
+  repository_dispatch:
+    types: [publish-inside]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-inside
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout web repo (inside)
+        uses: actions/checkout@v4
+        with:
+          ref: inside
+          fetch-depth: 1
+
+      - name: Checkout source repo (inside)
+        uses: actions/checkout@v4
+        with:
+          repository: LeoY2020/r7kb
+          ref: inside
+          path: _src
+          fetch-depth: 1
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build static site
+        working-directory: _src
+        run: |
+          sed -i 's|registry.npmmirror.com|registry.npmjs.org|g' package-lock.json
+          npm ci --no-audit --no-fund
+          NEXT_DIST_DIR=.next-deploy npm run build
+
+      - name: Publish to inside
+        run: |
+          if [ -f _src/.next-deploy/index.html ]; then SITE=_src/.next-deploy; else SITE=_src/out; fi
+          test -f "$SITE/index.html"
+          rsync -a --delete --exclude .git --exclude _src "$SITE"/ ./
+          rm -rf _src
+          touch .nojekyll
+          git config user.name "r7kb-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then echo "no changes"; exit 0; fi
+          git commit -m "build: publish static site from r7kb@inside"
+          git push origin HEAD:inside
