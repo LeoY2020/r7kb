@@ -23,6 +23,7 @@ import {
   Field,
   Icon,
   IconButton,
+  longPressHandler,
   Modal,
   PromptModal,
   useToast,
@@ -219,6 +220,7 @@ export default function NotesPage() {
   const [confirmState, setConfirmState] = useState<ConfirmState | null>(null);
   const [drag, setDrag] = useState<{ kind: 'note' | 'dir'; rel: string } | null>(null);
   const [dropTarget, setDropTarget] = useState('');
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   const folders = useMemo(() => parseFolders(fileText(FOLDERS_PATH)), [fileText]);
 
@@ -246,6 +248,10 @@ export default function NotesPage() {
     event.preventDefault();
     event.stopPropagation();
     setMenu({ x: event.clientX, y: event.clientY, target });
+  };
+
+  const openMenuAt = (x: number, y: number, target: MenuTarget) => {
+    setMenu({ x, y, target });
   };
 
   const toggleDir = (rel: string) => {
@@ -367,6 +373,7 @@ export default function NotesPage() {
     addFile(path, `${header}\n`);
     setSelected(path);
     setSelectedDir(dir);
+    setMobileOpen(true);
     toast.show('笔记已创建，记得填写简介并发布');
   };
 
@@ -490,8 +497,10 @@ export default function NotesPage() {
         onClick={() => {
           setSelected(note.path);
           setSelectedDir(parentOf(rel));
+          setMobileOpen(true);
         }}
         onContextMenu={(event) => openMenu(event, { kind: 'note', path: note.path })}
+        {...longPressHandler((x, y) => openMenuAt(x, y, { kind: 'note', path: note.path }))}
       >
         <Icon name="file" size={13} />
         <span className="tree-label">{note.title}</span>
@@ -539,6 +548,7 @@ export default function NotesPage() {
             toggleDir(dir.rel);
           }}
           onContextMenu={(event) => openMenu(event, { kind: 'dir', rel: dir.rel })}
+          {...longPressHandler((x, y) => openMenuAt(x, y, { kind: 'dir', rel: dir.rel }))}
         >
           <span className="tree-caret">
             <Icon name={isCollapsed ? 'chevronRight' : 'chevronDown'} size={12} />
@@ -557,7 +567,7 @@ export default function NotesPage() {
   };
 
   return (
-    <div className="notes-layout">
+    <div className="notes-layout" data-mobile-open={mobileOpen}>
       <div className="card tree-panel">
         <div className="explorer-head">
           <span className="explorer-title">知识库</span>
@@ -587,6 +597,7 @@ export default function NotesPage() {
           onContextMenu={(event) => {
             if (event.target === event.currentTarget) openMenu(event, { kind: 'root' });
           }}
+          {...longPressHandler((x, y) => openMenuAt(x, y, { kind: 'root' }))}
           onDragOver={(event) => {
             if (!drag) return;
             event.preventDefault();
@@ -615,7 +626,15 @@ export default function NotesPage() {
         </div>
       </div>
 
-      <div>
+      <div className="notes-editor">
+        <button
+          type="button"
+          className="mobile-back"
+          onClick={() => setMobileOpen(false)}
+        >
+          <Icon name="chevronDown" size={14} style={{ transform: 'rotate(90deg)' }} />
+          返回目录
+        </button>
         {active ? (
           <NoteEditor
             key={active.path}
@@ -623,6 +642,7 @@ export default function NotesPage() {
             onDeleted={() => {
               const next = notes.find((note) => note.path !== active.path);
               setSelected(next?.path ?? '');
+              if (!next) setMobileOpen(false);
             }}
           />
         ) : (

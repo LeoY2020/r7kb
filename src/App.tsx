@@ -73,6 +73,10 @@ function Studio({ session }: { session: SessionInfo }) {
     if (error) toast.show(error, 'error');
   }, [error, toast]);
 
+  useEffect(() => {
+    window.scrollTo({ top: 0 });
+  }, [route]);
+
   return (
     <div className="studio">
       <aside className="rail">
@@ -157,13 +161,15 @@ function Studio({ session }: { session: SessionInfo }) {
         </header>
 
         <main className="page">
-          {route === 'dashboard' ? <DashboardPage onNavigate={navigate} /> : null}
-          {route === 'notes' ? <NotesPage /> : null}
-          {route === 'questions' ? <QuestionsPage onOpenNote={() => navigate('notes')} /> : null}
-          {route === 'graph' ? <GraphPage /> : null}
-          {route === 'library' ? <LibraryPage /> : null}
-          {route === 'publish' ? <PublishPage /> : null}
-          {route === 'about' ? <AboutPage /> : null}
+          <div className="page-view" key={route}>
+            {route === 'dashboard' ? <DashboardPage onNavigate={navigate} /> : null}
+            {route === 'notes' ? <NotesPage /> : null}
+            {route === 'questions' ? <QuestionsPage onOpenNote={() => navigate('notes')} /> : null}
+            {route === 'graph' ? <GraphPage /> : null}
+            {route === 'library' ? <LibraryPage /> : null}
+            {route === 'publish' ? <PublishPage /> : null}
+            {route === 'about' ? <AboutPage /> : null}
+          </div>
         </main>
       </div>
     </div>

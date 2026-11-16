@@ -9,6 +9,7 @@ import {
   Field,
   Icon,
   IconButton,
+  longPressHandler,
   Modal,
   PromptModal,
   formatBytes,
@@ -404,6 +405,10 @@ export default function LibraryPage() {
     setMenu({ x: event.clientX, y: event.clientY, target });
   };
 
+  const openMenuAt = (x: number, y: number, target: MenuTarget) => {
+    setMenu({ x, y, target });
+  };
+
   const menuItems = (target: MenuTarget): ContextMenuItem[] => {
     if (target.kind === 'file') {
       const item = items[target.index];
@@ -522,6 +527,7 @@ export default function LibraryPage() {
             onClick={() => setCurrentDir(node.rel)}
             onDoubleClick={() => setCurrentDir(node.rel)}
             onContextMenu={(event) => openMenu(event, { kind: 'folder', rel: node.rel })}
+            {...longPressHandler((x, y) => openMenuAt(x, y, { kind: 'folder', rel: node.rel }))}
             onDragOver={(event) => {
               if (!drag) return;
               event.preventDefault();
@@ -669,6 +675,7 @@ export default function LibraryPage() {
           onContextMenu={(event) => {
             if (event.target === event.currentTarget) openMenu(event, { kind: 'blank' });
           }}
+          {...longPressHandler((x, y) => openMenuAt(x, y, { kind: 'blank' }))}
           onDragOver={(event) => {
             if (event.dataTransfer.types.includes('Files')) {
               event.preventDefault();
@@ -742,6 +749,7 @@ export default function LibraryPage() {
                   }}
                   onDoubleClick={() => setCurrentDir(rel)}
                   onContextMenu={(event) => openMenu(event, { kind: 'folder', rel })}
+                  {...longPressHandler((x, y) => openMenuAt(x, y, { kind: 'folder', rel }))}
                 >
                   <span className="file-icon" style={{ color: 'rgb(var(--accent))' }}>
                     <Icon name="folder" size={18} />
@@ -778,6 +786,7 @@ export default function LibraryPage() {
                     }}
                     onDoubleClick={() => setEditing({ item: { ...item }, index })}
                     onContextMenu={(event) => openMenu(event, { kind: 'file', index })}
+                    {...longPressHandler((x, y) => openMenuAt(x, y, { kind: 'file', index }))}
                   >
                     <div className="file-actions">
                       <IconButton

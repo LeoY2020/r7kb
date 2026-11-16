@@ -9,6 +9,66 @@ import {
   type ReactNode,
 } from 'react';
 
+/* ------------------------------ 长按（触屏右键） ------------------------------ */
+
+const LONG_PRESS_MS = 520;
+const longPressTimers = new WeakMap<Element, number>();
+const longPressPoints = new WeakMap<Element, { x: number; y: number; fired: boolean }>();
+
+/**
+ * 触屏长按映射右键菜单；鼠标设备保持原有 onContextMenu。
+ * 同一次长按后紧跟的 click 会被吞掉，避免误触打开内容。
+ */
+export function longPressHandler(onLongPress: (x: number, y: number) => void) {
+  return {
+    onPointerDown: (event: React.PointerEvent<HTMLElement>) => {
+      if (event.pointerType === 'mouse') return;
+      event.stopPropagation();
+      const element = event.currentTarget;
+      const point = { x: event.clientX, y: event.clientY, fired: false };
+      longPressPoints.set(element, point);
+      const timer = window.setTimeout(() => {
+        point.fired = true;
+        if (typeof navigator.vibrate === 'function') navigator.vibrate(8);
+        onLongPress(point.x, point.y);
+        longPressTimers.delete(element);
+      }, LONG_PRESS_MS);
+      longPressTimers.set(element, timer);
+    },
+    onPointerMove: (event: React.PointerEvent<HTMLElement>) => {
+      const timer = longPressTimers.get(event.currentTarget);
+      const point = longPressPoints.get(event.currentTarget);
+      if (timer === undefined || !point) return;
+      if (Math.hypot(event.clientX - point.x, event.clientY - point.y) > 12) {
+        window.clearTimeout(timer);
+        longPressTimers.delete(event.currentTarget);
+      }
+    },
+    onPointerUp: (event: React.PointerEvent<HTMLElement>) => {
+      const timer = longPressTimers.get(event.currentTarget);
+      if (timer !== undefined) {
+        window.clearTimeout(timer);
+        longPressTimers.delete(event.currentTarget);
+      }
+    },
+    onPointerCancel: (event: React.PointerEvent<HTMLElement>) => {
+      const timer = longPressTimers.get(event.currentTarget);
+      if (timer !== undefined) {
+        window.clearTimeout(timer);
+        longPressTimers.delete(event.currentTarget);
+      }
+    },
+    onClickCapture: (event: React.MouseEvent<HTMLElement>) => {
+      const point = longPressPoints.get(event.currentTarget);
+      if (point?.fired) {
+        point.fired = false;
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    },
+  };
+}
+
 /* ------------------------------ 图标 ------------------------------ */
 
 const PATHS: Record<string, ReactNode> = {
