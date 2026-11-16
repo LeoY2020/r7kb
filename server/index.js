@@ -2,7 +2,7 @@
  * r7kb 教师工作台 · 服务端
  *
  * 职责：
- *   1. 密码登录（HttpOnly Cookie），GitHub token 只存在于服务端环境变量；
+ *   1. 密码登录（HttpOnly Cookie），GitHub token 只存在于服务端（环境变量或 server/secret.json）；
  *   2. 从 r7kb 仓库读取 content/ 下的 Markdown / JSON 给编辑器；
  *   3. 把老师的改动一次性提交到 r7kb 的 inside 分支；
  *   4. 触发 r7kb-web 的 Actions 构建（构建结果推送到 r7kb-web 的 inside 分支）。
@@ -28,15 +28,34 @@ import {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+/**
+ * 部署平台不支持注入环境变量，因此允许把部署配置放在 server/secret.json
+ * （该文件已在 .gitignore 中，不会提交到仓库；环境变量优先）。
+ */
+function loadSecret() {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(__dirname, 'secret.json'), 'utf8'));
+  } catch {
+    return {};
+  }
+}
+
+const secret = loadSecret();
+
 const PORT = Number(process.env.PORT || 8801);
 const HOST = process.env.HOST || '0.0.0.0';
-const GH_TOKEN = (process.env.GH_TOKEN || '').trim();
+const GH_TOKEN = (process.env.GH_TOKEN || secret.GH_TOKEN || '').trim();
 const SOURCE_REPO = process.env.GH_REPO || 'LeoY2020/r7kb';
 const WEB_REPO = process.env.WEB_REPO || 'LeoY2020/r7kb-web';
 const WORK_BRANCH = process.env.GH_BRANCH || 'inside';
 const BASE_BRANCH = process.env.GH_BASE || 'main';
-const PASSWORD = (process.env.STUDIO_PASSWORD || '').trim();
-const SESSION_SECRET = (process.env.SESSION_SECRET || PASSWORD || 'r7kb-studio').trim();
+const PASSWORD = (process.env.STUDIO_PASSWORD || secret.STUDIO_PASSWORD || '').trim();
+const SESSION_SECRET = (
+  process.env.SESSION_SECRET ||
+  secret.SESSION_SECRET ||
+  PASSWORD ||
+  'r7kb-studio'
+).trim();
 
 const CONTENT_PREFIX = 'content/';
 const RESOURCES_PREFIX = 'public/resources/';
