@@ -62,7 +62,7 @@ export default function KnowledgeHomePage() {
         </div>
       </header>
 
-      {rootNote ? (
+      {rootNote && blocks.length > 0 ? (
         <section className="mt-8 rounded-panel border border-line bg-surface px-5 py-7 shadow-soft sm:px-8 sm:py-9">
           <NoteContent
             blocks={blocks}
