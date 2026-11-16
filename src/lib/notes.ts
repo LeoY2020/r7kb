@@ -12,6 +12,7 @@ export const VAULT_PREFIX = 'content/knowledge/';
 export const LIBRARY_PATH = 'content/library/items.json';
 export const LINKS_PATH = 'content/knowledge/_config/chapter-links.json';
 export const ORDER_PATH = 'content/knowledge/_config/chapter-order.json';
+export const FOLDERS_PATH = 'content/knowledge/_config/folders.json';
 
 const FRONTMATTER_KEYS = [
   'slug',
@@ -108,8 +109,30 @@ export type TreeNote = {
 
 export type VaultTree = { notes: TreeNote[]; dirs: TreeDir[] };
 
+export function parseFolders(text: string | undefined): string[] {
+  if (!text) return [];
+  try {
+    const data = JSON.parse(text) as { folders?: unknown };
+    if (!Array.isArray(data.folders)) return [];
+    return [
+      ...new Set(
+        data.folders
+          .filter((item): item is string => typeof item === 'string')
+          .map((item) => item.replace(/\\/g, '/').replace(/^\/+|\/+$/g, ''))
+          .filter(Boolean),
+      ),
+    ];
+  } catch {
+    return [];
+  }
+}
+
+export function serializeFolders(folders: string[]): string {
+  return `${JSON.stringify({ folders: [...new Set(folders)].sort((a, b) => a.localeCompare(b, 'zh-Hans-CN')) }, null, 2)}\n`;
+}
+
 /** 按目录生成侧栏树；目录顺序优先使用目录内 index.md 的 order。 */
-export function buildVaultTree(notes: Note[]): VaultTree {
+export function buildVaultTree(notes: Note[], extraFolders: string[] = []): VaultTree {
   const byDir = new Map<string, Note[]>();
   for (const note of notes) {
     const list = byDir.get(note.dir) ?? [];
@@ -117,14 +140,27 @@ export function buildVaultTree(notes: Note[]): VaultTree {
     byDir.set(note.dir, list);
   }
 
+  const knownDirs = new Set<string>();
+  const addDir = (rel: string) => {
+    if (!rel) return;
+    const parts = rel.split('/').filter(Boolean);
+    let acc = '';
+    for (const part of parts) {
+      acc = acc ? `${acc}/${part}` : part;
+      knownDirs.add(acc);
+    }
+  };
+  for (const note of notes) addDir(note.dir);
+  for (const folder of extraFolders) addDir(folder);
+
   const childDirs = (parent: string): string[] => {
     const prefix = parent ? `${parent}/` : '';
     const dirs = new Set<string>();
-    for (const note of notes) {
-      if (!note.dir || !note.dir.startsWith(prefix)) continue;
-      const rest = note.dir.slice(prefix.length);
-      if (!rest) continue;
-      dirs.add(prefix + rest.split('/')[0]);
+    for (const dir of knownDirs) {
+      if (!dir.startsWith(prefix)) continue;
+      const rest = dir.slice(prefix.length);
+      if (!rest || rest.includes('/')) continue;
+      dirs.add(prefix + rest);
     }
     return [...dirs];
   };

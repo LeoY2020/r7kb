@@ -55,6 +55,7 @@ export const api = {
     files: { path: string; text: string }[];
     uploads: { path: string; base64: string }[];
     deletions: string[];
+    moves: { from: string; to: string }[];
   }) =>
     request<{
       ok: true;

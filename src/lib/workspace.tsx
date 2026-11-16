@@ -16,6 +16,7 @@ import { isVaultNotePath, parseNote, serializeNote } from './notes';
 import type { ContentSnapshot, Note } from './types';
 
 export type Upload = { path: string; base64: string; size: number; name: string };
+export type FileMove = { from: string; to: string };
 
 type WorkspaceValue = {
   snapshot: ContentSnapshot | null;
@@ -34,6 +35,8 @@ type WorkspaceValue = {
   uploads: Upload[];
   addUpload: (upload: Upload) => void;
   removeUpload: (path: string) => void;
+  moves: FileMove[];
+  addMove: (move: FileMove) => void;
   changedFiles: { path: string; text: string; status: 'modified' | 'added' }[];
   changeCount: number;
   refresh: (force?: boolean) => Promise<void>;
@@ -54,6 +57,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [deletions, setDeletions] = useState<string[]>([]);
   const [uploads, setUploads] = useState<Upload[]>([]);
+  const [moves, setMoves] = useState<FileMove[]>([]);
 
   const refresh = useCallback(async (force = false) => {
     setLoading(true);
@@ -64,6 +68,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       setEdits({});
       setDeletions([]);
       setUploads([]);
+      setMoves([]);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : '读取内容失败');
     } finally {
@@ -150,11 +155,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         delete next[path];
         return next;
       });
-      if (baseFiles.has(path)) {
+      if (
+        baseFiles.has(path) ||
+        (snapshot?.resources ?? []).some((resource) => resource.path === path)
+      ) {
         setDeletions((prev) => (prev.includes(path) ? prev : [...prev, path]));
       }
     },
-    [baseFiles],
+    [baseFiles, snapshot],
   );
 
   const restoreFile = useCallback((path: string) => {
@@ -178,6 +186,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     setUploads((prev) => prev.filter((item) => item.path !== path));
   }, []);
 
+  const addMove = useCallback((move: FileMove) => {
+    setMoves((prev) => {
+      const next = prev.filter((item) => item.from !== move.from);
+      next.push(move);
+      return next;
+    });
+  }, []);
+
   const changedFiles = useMemo(() => {
     const out: { path: string; text: string; status: 'modified' | 'added' }[] = [];
     for (const [path, text] of Object.entries(edits)) {
@@ -188,7 +204,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     return out.sort((a, b) => a.path.localeCompare(b.path));
   }, [edits, baseFiles]);
 
-  const changeCount = changedFiles.length + deletions.length + uploads.length;
+  const changeCount = changedFiles.length + deletions.length + uploads.length + moves.length;
 
   const publish = useCallback(
     async (message: string) => {
@@ -197,10 +213,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         files: changedFiles.map(({ path, text }) => ({ path, text })),
         uploads: uploads.map(({ path, base64 }) => ({ path, base64 })),
         deletions,
+        moves,
       });
       setEdits({});
       setDeletions([]);
       setUploads([]);
+      setMoves([]);
       try {
         const data = await api.content(true);
         setSnapshot(data);
@@ -211,13 +229,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       }
       return result;
     },
-    [changedFiles, deletions, uploads],
+    [changedFiles, deletions, uploads, moves],
   );
 
   const resetAll = useCallback(() => {
     setEdits({});
     setDeletions([]);
     setUploads([]);
+    setMoves([]);
   }, []);
 
   const value: WorkspaceValue = {
@@ -237,6 +256,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     uploads,
     addUpload,
     removeUpload,
+    moves,
+    addMove,
     changedFiles,
     changeCount,
     refresh,

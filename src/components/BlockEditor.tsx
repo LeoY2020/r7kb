@@ -3,7 +3,7 @@ import { makeBlock, nextKey, type Block, type BlockKind } from '../lib/blocks';
 import { htmlToInline, inlineToHtml, renderStem } from '../lib/inline';
 import { detectKind } from '../lib/questions';
 import type { Question } from '../lib/types';
-import { Button, Icon, IconButton, Modal, useToast } from './ui';
+import { Button, Icon, Modal, useToast } from './ui';
 import QuestionModal from './QuestionModal';
 
 const TYPE_LABEL: Record<BlockKind, string> = {
@@ -37,16 +37,88 @@ const ADDABLE: BlockKind[] = [
   'raw',
 ];
 
+const TEXT_KINDS: BlockKind[] = ['h1', 'h2', 'h3', 'p', 'bullet', 'ordered', 'quote'];
+
+const isTextBlock = (type: BlockKind) => TEXT_KINDS.includes(type);
+
+const PLACEHOLDER: Partial<Record<BlockKind, string>> = {
+  h1: '大标题',
+  h2: '标题',
+  h3: '小标题',
+  p: '开始输入正文，按 Enter 自动开始下一段',
+  bullet: '列表项，Enter 继续下一项',
+  ordered: '步骤，Enter 继续下一项',
+  quote: '引用一段话',
+};
+
+type Caret = { key: string; pos: 'start' | 'end' };
+
+function placeCaret(element: HTMLElement, pos: 'start' | 'end') {
+  element.focus();
+  const range = document.createRange();
+  range.selectNodeContents(element);
+  range.collapse(pos === 'start');
+  const selection = window.getSelection();
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+}
+
+function caretOffset(element: HTMLElement): number {
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0) return 0;
+  const current = selection.getRangeAt(0);
+  if (!element.contains(current.startContainer)) return 0;
+  const range = document.createRange();
+  range.selectNodeContents(element);
+  range.setEnd(current.startContainer, current.startOffset);
+  return range.toString().replace(/\u200b/g, '').length;
+}
+
+function splitAtCaret(element: HTMLElement): { before: string; after: string } {
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0) {
+    return { before: htmlToInline(element), after: '' };
+  }
+  const current = selection.getRangeAt(0);
+  if (!element.contains(current.startContainer)) {
+    return { before: htmlToInline(element), after: '' };
+  }
+  const beforeRange = document.createRange();
+  beforeRange.selectNodeContents(element);
+  beforeRange.setEnd(current.startContainer, current.startOffset);
+  const afterRange = document.createRange();
+  afterRange.selectNodeContents(element);
+  afterRange.setStart(current.endContainer, current.endOffset);
+
+  const toMarkdown = (fragment: DocumentFragment) => {
+    const holder = document.createElement('div');
+    holder.appendChild(fragment);
+    return htmlToInline(holder);
+  };
+  return {
+    before: toMarkdown(beforeRange.cloneContents()),
+    after: toMarkdown(afterRange.cloneContents()),
+  };
+}
+
 function InlineEditable({
+  blockKey,
   value,
-  placeholder,
+  type,
+  caret,
   onChange,
   onFocus,
+  onSplit,
+  onEmptyBackspace,
 }: {
+  blockKey: string;
   value: string;
-  placeholder: string;
+  type: BlockKind;
+  caret: Caret | null;
   onChange: (text: string) => void;
   onFocus: (element: HTMLElement) => void;
+  onSplit: (parts: { before: string; after: string }) => void;
+  onEmptyBackspace: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
 
@@ -58,24 +130,44 @@ function InlineEditable({
     if (element.innerHTML !== html) element.innerHTML = html;
   }, [value]);
 
+  useEffect(() => {
+    if (!caret || caret.key !== blockKey) return;
+    const element = ref.current;
+    if (element) placeCaret(element, caret.pos);
+  }, [caret, blockKey]);
+
   return (
     <div
       ref={ref}
       className="block-input"
       contentEditable
       suppressContentEditableWarning
-      data-placeholder={placeholder}
+      data-placeholder={PLACEHOLDER[type] ?? '写点什么'}
       spellCheck={false}
       onInput={() => onChange(htmlToInline(ref.current))}
       onFocus={() => ref.current && onFocus(ref.current)}
-      onBlur={() => {
-        if (ref.current) ref.current.innerHTML = inlineToHtml(value);
-      }}
       onKeyDown={(event) => {
         if (event.key === 'Enter' && !event.shiftKey) {
           event.preventDefault();
+          if (!ref.current) return;
+          const parts = splitAtCaret(ref.current);
+          // 当前块仍在焦点中，React 的 value→DOM 同步会跳过；这里先手动截断，避免出现重复文字
+          ref.current.innerHTML = inlineToHtml(parts.before);
+          onSplit(parts);
+          return;
+        }
+        if (event.key === 'Enter' && event.shiftKey) {
+          event.preventDefault();
           document.execCommand('insertLineBreak');
           onChange(htmlToInline(ref.current));
+          return;
+        }
+        if (event.key === 'Backspace' && ref.current) {
+          const empty = !htmlToInline(ref.current).trim();
+          if (empty && caretOffset(ref.current) === 0) {
+            event.preventDefault();
+            onEmptyBackspace();
+          }
         }
       }}
       onPaste={(event) => {
@@ -87,13 +179,7 @@ function InlineEditable({
   );
 }
 
-function QuestionPreview({
-  question,
-  onEdit,
-}: {
-  question: Question;
-  onEdit: () => void;
-}) {
+function QuestionPreview({ question, onEdit }: { question: Question; onEdit: () => void }) {
   const kind = detectKind(question);
   const answers = question.answer
     .replace(/[\s,，、;；/]/g, '')
@@ -117,11 +203,7 @@ function QuestionPreview({
         {question.options.length > 0 ? (
           <div className="option-list">
             {question.options.map((option) => (
-              <div
-                key={option.tag}
-                className="option-row"
-                data-correct={answers.includes(option.tag)}
-              >
+              <div key={option.tag} className="option-row" data-correct={answers.includes(option.tag)}>
                 <span className="option-tag">{option.tag}</span>
                 <span>{option.text}</span>
               </div>
@@ -131,9 +213,7 @@ function QuestionPreview({
         <div className="answer-line">
           <b>答案</b>：{question.answer || '（未填写）'}
         </div>
-        {question.explanation ? (
-          <div className="explain-line">解析：{question.explanation}</div>
-        ) : null}
+        {question.explanation ? <div className="explain-line">解析：{question.explanation}</div> : null}
         {question.knowledge.length > 0 ? (
           <div className="knowledge-row">
             {question.knowledge.map((item) => (
@@ -160,18 +240,18 @@ export default function BlockEditor({
   onChange: (blocks: Block[]) => void;
 }) {
   const toast = useToast();
-  const [active, setActive] = useState<{ index: number; element: HTMLElement } | null>(null);
+  const [active, setActive] = useState<{ index: number; element: HTMLElement | null } | null>(null);
+  const [caret, setCaret] = useState<Caret | null>(null);
   const [editing, setEditing] = useState<{ index: number; question: Question } | null>(null);
   const [insert, setInsert] = useState<{ kind: 'link' | 'wiki'; text: string; value: string } | null>(
     null,
   );
 
-  const update = (index: number, patch: Partial<Block>) => {
-    const next = blocks.map((block, i) => (i === index ? { ...block, ...patch } : block));
-    onChange(next);
-  };
+  const activeBlock = active ? blocks[active.index] : null;
 
-  const updateText = (index: number, text: string) => update(index, { text });
+  const update = (index: number, patch: Partial<Block>) => {
+    onChange(blocks.map((block, i) => (i === index ? { ...block, ...patch } : block)));
+  };
 
   const move = (index: number, direction: -1 | 1) => {
     const target = index + direction;
@@ -179,10 +259,13 @@ export default function BlockEditor({
     const next = [...blocks];
     [next[index], next[target]] = [next[target], next[index]];
     onChange(next);
+    if (active?.index === index) setActive({ index: target, element: null });
+    else if (active?.index === target) setActive({ index, element: null });
   };
 
   const remove = (index: number) => {
     onChange(blocks.filter((_, i) => i !== index));
+    setActive(null);
   };
 
   const duplicate = (index: number) => {
@@ -192,7 +275,7 @@ export default function BlockEditor({
     onChange(next);
   };
 
-  const add = (type: BlockKind) => {
+  const add = (type: BlockKind, afterIndex?: number) => {
     const block = makeBlock(type);
     if (type === 'question') {
       block.question = {
@@ -207,40 +290,74 @@ export default function BlockEditor({
         kind: 'text',
       };
     }
-    onChange([...blocks, block]);
+    const next = [...blocks];
+    const at = afterIndex === undefined ? next.length : Math.min(afterIndex + 1, next.length);
+    next.splice(at, 0, block);
+    onChange(next);
+    setActive({ index: at, element: null });
+    if (isTextBlock(type)) setCaret({ key: block.key, pos: 'end' });
+  };
+
+  const splitBlock = (index: number, parts: { before: string; after: string }) => {
+    const source = blocks[index];
+    const nextType: BlockKind =
+      source.type === 'h1' || source.type === 'h2' || source.type === 'h3' ? 'p' : source.type;
+    const created: Block = { key: nextKey(), type: nextType, text: parts.after };
+    const next = [...blocks];
+    next[index] = { ...source, text: parts.before };
+    next.splice(index + 1, 0, created);
+    onChange(next);
+    setActive({ index: index + 1, element: null });
+    setCaret({ key: created.key, pos: 'start' });
+  };
+
+  const deleteEmpty = (index: number) => {
+    if (blocks.length <= 1) return;
+    const previous = blocks[index - 1];
+    onChange(blocks.filter((_, i) => i !== index));
+    setActive(previous ? { index: index - 1, element: null } : null);
+    if (previous && isTextBlock(previous.type)) setCaret({ key: previous.key, pos: 'end' });
+  };
+
+  const convert = (type: BlockKind) => {
+    if (!active || !activeBlock) {
+      toast.show('先点一下要修改的段落', 'error');
+      return;
+    }
+    update(active.index, { type });
+    if (isTextBlock(type) && active.element) setCaret({ key: activeBlock.key, pos: 'end' });
   };
 
   const run = (command: string, value?: string) => {
-    if (!active) {
+    if (!active?.element) {
       toast.show('先在正文里点一下要编辑的位置', 'error');
       return;
     }
     active.element.focus();
     document.execCommand(command, false, value);
-    updateText(active.index, htmlToInline(active.element));
+    update(active.index, { text: htmlToInline(active.element) });
   };
 
   const wrapSelection = (before: string, after = before) => {
-    if (!active) {
+    if (!active?.element) {
       toast.show('先选中一段文字', 'error');
       return;
     }
     const element = active.element;
     element.focus();
-    const selection = window.getSelection();
-    const text = selection?.toString() ?? '';
+    const text = window.getSelection()?.toString() ?? '';
     document.execCommand('insertText', false, `${before}${text}${after}`);
-    updateText(active.index, htmlToInline(element));
+    update(active.index, { text: htmlToInline(element) });
   };
 
   const insertHtml = (html: string) => {
-    if (!active) {
+    if (!active?.element) {
       toast.show('先在正文里点一下要编辑的位置', 'error');
       return;
     }
     active.element.focus();
     document.execCommand('insertHTML', false, html);
-    updateText(active.index, htmlToInline(active.element));
+    update(active.index, { text: htmlToInline(active.element) });
   };
 
   const confirmInsert = () => {
@@ -248,13 +365,10 @@ export default function BlockEditor({
     if (insert.kind === 'link') {
       const url = insert.value.trim();
       if (!url) return;
-      if (insert.text.trim()) {
-        insertHtml(
-          `<a href="${url.replace(/"/g, '&quot;')}" target="_blank" rel="noreferrer">${insert.text}</a>`,
-        );
-      } else {
-        insertHtml(`<a href="${url.replace(/"/g, '&quot;')}" target="_blank" rel="noreferrer">${url}</a>`);
-      }
+      const label = insert.text.trim() || url;
+      insertHtml(
+        `<a href="${url.replace(/"/g, '&quot;')}" target="_blank" rel="noreferrer">${label}</a>`,
+      );
     } else {
       const target = insert.value.trim();
       if (!target) return;
@@ -265,26 +379,84 @@ export default function BlockEditor({
     setInsert(null);
   };
 
+  const activeType = activeBlock && isTextBlock(activeBlock.type) ? activeBlock.type : '';
+
   return (
     <>
       <div className="block-toolbar">
+        <select
+          className="select toolbar-select"
+          value={activeType}
+          title="当前段落的类型"
+          onChange={(event) => {
+            if (event.target.value) convert(event.target.value as BlockKind);
+          }}
+        >
+          <option value="" disabled>
+            段落类型
+          </option>
+          {TEXT_KINDS.map((type) => (
+            <option key={type} value={type}>
+              {TYPE_LABEL[type]}
+            </option>
+          ))}
+        </select>
+        <select
+          className="select toolbar-select"
+          value=""
+          title="在当前位置后插入新块"
+          onChange={(event) => {
+            const value = event.target.value as BlockKind | '';
+            if (value) add(value, active?.index);
+            event.currentTarget.value = '';
+          }}
+        >
+          <option value="">＋ 插入块</option>
+          {ADDABLE.map((type) => (
+            <option key={type} value={type}>
+              {TYPE_LABEL[type]}
+            </option>
+          ))}
+        </select>
+        <span className="toolbar-sep" />
         <button type="button" className="toolbar-btn" onClick={() => run('bold')} title="加粗">
           <b>B</b>
         </button>
         <button type="button" className="toolbar-btn" onClick={() => run('italic')} title="斜体">
           <i>I</i>
         </button>
-        <button type="button" className="toolbar-btn" onClick={() => wrapSelection('~~')} title="删除线">
+        <button
+          type="button"
+          className="toolbar-btn"
+          onClick={() => wrapSelection('~~')}
+          title="删除线"
+        >
           S
         </button>
-        <button type="button" className="toolbar-btn" onClick={() => wrapSelection('`')} title="行内代码">
+        <button
+          type="button"
+          className="toolbar-btn"
+          onClick={() => wrapSelection('`')}
+          title="行内代码"
+        >
           {'</>'}
+        </button>
+        <button
+          type="button"
+          className="toolbar-btn"
+          onClick={() => wrapSelection('$')}
+          title="行内公式"
+        >
+          ∑
         </button>
         <span className="toolbar-sep" />
         <button
           type="button"
           className="toolbar-btn"
-          onClick={() => setInsert({ kind: 'link', text: window.getSelection()?.toString() ?? '', value: '' })}
+          onClick={() =>
+            setInsert({ kind: 'link', text: window.getSelection()?.toString() ?? '', value: '' })
+          }
+          title="插入链接"
         >
           <Icon name="link" size={14} />
         </button>
@@ -296,54 +468,48 @@ export default function BlockEditor({
         >
           [[ ]]
         </button>
-        <button type="button" className="toolbar-btn" onClick={() => insertHtml('#')} title="标签">
+        <button
+          type="button"
+          className="toolbar-btn"
+          onClick={() => insertHtml('#')}
+          title="插入标签"
+        >
           #
         </button>
-        <button type="button" className="toolbar-btn" onClick={() => wrapSelection('$')} title="行内公式">
-          ∑
-        </button>
         <span className="toolbar-sep" />
+        <button
+          type="button"
+          className="toolbar-btn"
+          onClick={() => {
+            if (!active) {
+              toast.show('先点一下要复制的段落', 'error');
+              return;
+            }
+            duplicate(active.index);
+          }}
+          title="复制当前段落"
+        >
+          复制
+        </button>
         <button
           type="button"
           className="toolbar-btn"
           onClick={() => run('removeFormat')}
           title="清除格式"
         >
-          清除
+          清除格式
         </button>
       </div>
 
       <div className="block-list">
         {blocks.map((block, index) => (
-          <div key={block.key} className="block" data-type={block.type}>
-            <div className="block-tools">
-              <button
-                type="button"
-                className="block-grip"
-                title="上移"
-                onClick={() => move(index, -1)}
-              >
-                <Icon name="chevronDown" size={13} style={{ transform: 'rotate(180deg)' }} />
-              </button>
-              <button
-                type="button"
-                className="block-grip"
-                title="下移"
-                onClick={() => move(index, 1)}
-              >
-                <Icon name="chevronDown" size={13} />
-              </button>
-              <button
-                type="button"
-                className="block-grip"
-                title="删除这一段"
-                onClick={() => remove(index)}
-              >
-                <Icon name="trash" size={12} />
-              </button>
-            </div>
-
-            <div>
+          <div
+            key={block.key}
+            className="block"
+            data-type={block.type}
+            data-active={active?.index === index}
+          >
+            <div className="block-body">
               {block.type === 'divider' ? (
                 <div className="block-divider" />
               ) : block.type === 'code' ? (
@@ -359,7 +525,7 @@ export default function BlockEditor({
                     className="code-editor"
                     value={block.text}
                     spellCheck={false}
-                    onChange={(event) => updateText(index, event.target.value)}
+                    onChange={(event) => update(index, { text: event.target.value })}
                   />
                 </div>
               ) : block.type === 'table' || block.type === 'raw' ? (
@@ -367,7 +533,7 @@ export default function BlockEditor({
                   className="raw-editor"
                   value={block.text}
                   spellCheck={false}
-                  onChange={(event) => updateText(index, event.target.value)}
+                  onChange={(event) => update(index, { text: event.target.value })}
                 />
               ) : block.type === 'image' ? (
                 <div className="block-image">
@@ -401,74 +567,48 @@ export default function BlockEditor({
                 <div className="block-bullet">
                   <span className="block-dot">{block.type === 'bullet' ? '•' : `${index + 1}.`}</span>
                   <InlineEditable
+                    blockKey={block.key}
+                    type={block.type}
                     value={block.text}
-                    placeholder={block.type === 'bullet' ? '列表项' : '步骤'}
-                    onChange={(text) => updateText(index, text)}
+                    caret={caret}
+                    onChange={(text) => update(index, { text })}
                     onFocus={(element) => setActive({ index, element })}
+                    onSplit={(parts) => splitBlock(index, parts)}
+                    onEmptyBackspace={() => deleteEmpty(index)}
                   />
                 </div>
               ) : (
                 <InlineEditable
+                  blockKey={block.key}
+                  type={block.type}
                   value={block.text}
-                  placeholder={
-                    block.type === 'h1'
-                      ? '大标题'
-                      : block.type === 'h2'
-                        ? '小标题'
-                        : block.type === 'h3'
-                          ? '更小的标题'
-                          : block.type === 'quote'
-                            ? '引用一段话'
-                            : "写点什么，输入 '/' 也可以直接插入内容"
-                  }
-                  onChange={(text) => updateText(index, text)}
+                  caret={caret}
+                  onChange={(text) => update(index, { text })}
                   onFocus={(element) => setActive({ index, element })}
+                  onSplit={(parts) => splitBlock(index, parts)}
+                  onEmptyBackspace={() => deleteEmpty(index)}
                 />
               )}
+            </div>
 
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  minHeight: 20,
-                  marginTop: 2,
-                  opacity: 0.55,
-                }}
-              >
-                <select
-                  className="select input-sm"
-                  style={{ width: 104, height: 24, fontSize: 11, padding: '0 24px 0 8px' }}
-                  value={block.type}
-                  onChange={(event) => update(index, { type: event.target.value as BlockKind })}
-                >
-                  {ADDABLE.map((type) => (
-                    <option key={type} value={type}>
-                      {TYPE_LABEL[type]}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  type="button"
-                  className="toolbar-btn"
-                  style={{ height: 24, fontSize: 11 }}
-                  onClick={() => duplicate(index)}
-                >
-                  复制
-                </button>
-              </div>
+            <div className="block-tools">
+              <button type="button" className="block-tool" title="上移" onClick={() => move(index, -1)}>
+                <Icon name="chevronDown" size={12} style={{ transform: 'rotate(180deg)' }} />
+              </button>
+              <button type="button" className="block-tool" title="下移" onClick={() => move(index, 1)}>
+                <Icon name="chevronDown" size={12} />
+              </button>
+              <button type="button" className="block-tool" title="删除这一段" onClick={() => remove(index)}>
+                <Icon name="trash" size={12} />
+              </button>
             </div>
           </div>
         ))}
 
         <div className="block-add">
-          <div className="add-row">
-            {ADDABLE.map((type) => (
-              <button key={type} type="button" className="add-chip" onClick={() => add(type)}>
-                + {TYPE_LABEL[type]}
-              </button>
-            ))}
-          </div>
+          <button type="button" className="block-add-btn" onClick={() => add('p')}>
+            <Icon name="plus" size={14} /> 在末尾添加一段
+          </button>
         </div>
       </div>
 

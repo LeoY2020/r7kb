@@ -269,7 +269,8 @@ app.post('/api/publish', requireAuth, async (req, res, next) => {
     const textFiles = Array.isArray(req.body?.files) ? req.body.files : [];
     const uploads = Array.isArray(req.body?.uploads) ? req.body.uploads : [];
     const deletions = Array.isArray(req.body?.deletions) ? req.body.deletions : [];
-    if (textFiles.length + uploads.length + deletions.length === 0) {
+    const moves = Array.isArray(req.body?.moves) ? req.body.moves : [];
+    if (textFiles.length + uploads.length + deletions.length + moves.length === 0) {
       res.status(400).json({ error: '没有需要提交的改动' });
       return;
     }
@@ -303,6 +304,30 @@ app.post('/api/publish', requireAuth, async (req, res, next) => {
         return;
       }
       changes.push({ path: upload.path, base64: buffer.toString('base64') });
+    }
+
+    if (moves.length > 0) {
+      await ensureBranch(gh, SOURCE_REPO, WORK_BRANCH, BASE_BRANCH);
+      const head = await getBranchHead(gh, SOURCE_REPO, WORK_BRANCH);
+      const tree = await getTree(gh, SOURCE_REPO, head.sha);
+      const blobSha = new Map(
+        (tree.tree ?? [])
+          .filter((entry) => entry.type === 'blob')
+          .map((entry) => [entry.path, entry.sha]),
+      );
+      for (const move of moves) {
+        assertAllowedPath(move?.from);
+        assertAllowedPath(move?.to);
+        if (move.from === move.to) continue;
+        const sha = blobSha.get(move.from);
+        if (!sha) {
+          res.status(400).json({ error: `要移动的文件不存在：${move.from}` });
+          return;
+        }
+        const base64 = await getBlobBase64(gh, SOURCE_REPO, sha);
+        changes.push({ path: move.to, base64 });
+        changes.push({ path: move.from, delete: true });
+      }
     }
 
     const message =

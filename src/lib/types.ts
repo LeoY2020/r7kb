@@ -62,6 +62,8 @@ export type LibraryItem = {
   subject?: string;
   type: 'pdf' | 'slide' | 'doc' | 'video' | 'link';
   href: string;
+  /** 所在文件夹（相对 public/resources 的路径）；外部链接也可归入文件夹 */
+  folder?: string;
   size?: string;
   updatedAt?: string;
   description?: string;

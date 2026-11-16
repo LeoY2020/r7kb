@@ -34,6 +34,12 @@ const PATHS: Record<string, ReactNode> = {
   arrowUp: <path d="M12 19V5m-6 6 6-6 6 6" />,
   arrowDown: <path d="M12 5v14m6-6-6 6-6-6" />,
   file: <><path d="M6 3h8l4 4v14H6z" /><path d="M14 3v4h4" /></>,
+  folder: <path d="M3 6h6l2 2h10v11H3z" />,
+  folderOpen: <><path d="M3 7h6l2 2h9v3" /><path d="m3 19 2.5-7H21l-2.5 7z" /></>,
+  filePlus: <><path d="M6 3h8l4 4v14H6z" /><path d="M14 3v4h4" /><path d="M12 11v6M9 14h6" /></>,
+  folderPlus: <><path d="M3 6h6l2 2h10v11H3z" /><path d="M12 11v6M9 14h6" /></>,
+  more: <><circle cx="5" cy="12" r="1.4" /><circle cx="12" cy="12" r="1.4" /><circle cx="19" cy="12" r="1.4" /></>,
+  info: <><circle cx="12" cy="12" r="9" /><path d="M12 11v6M12 7.5v.5" /></>,
   logout: <><path d="M15 4h4v16h-4" /><path d="M11 8l-4 4 4 4M7 12h9" /></>,
   spark: <path d="M12 3v4M12 17v4M3 12h4M17 12h4M6.3 6.3l2.8 2.8M14.9 14.9l2.8 2.8M17.7 6.3l-2.8 2.8M9.1 14.9l-2.8 2.8" />,
   wand: <><path d="M15 4V2M15 10V8M11 6H9M21 6h-2" /><path d="M4 20 17 7l2 2L6 22z" /></>,
@@ -183,9 +189,147 @@ export function Modal({
   );
 }
 
-/* ------------------------------ Toast ------------------------------ */
+/* ------------------------------ 右键菜单 ------------------------------ */
 
-type ToastItem = { id: number; message: string; kind: 'info' | 'error' };
+export type ContextMenuItem =
+  | { separator: true }
+  | {
+      label: string;
+      icon?: string;
+      danger?: boolean;
+      disabled?: boolean;
+      onClick: () => void;
+    };
+
+export function ContextMenu({
+  x,
+  y,
+  items,
+  onClose,
+}: {
+  x: number;
+  y: number;
+  items: ContextMenuItem[];
+  onClose: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const onPointerDown = (event: Event) => {
+      if (ref.current && event.target instanceof Node && ref.current.contains(event.target)) return;
+      onClose();
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('pointerdown', onPointerDown, true);
+    window.addEventListener('resize', onClose);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('pointerdown', onPointerDown, true);
+      window.removeEventListener('resize', onClose);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [onClose]);
+
+  const left = Math.min(x, Math.max(8, window.innerWidth - 208));
+  const top = Math.min(y, Math.max(8, window.innerHeight - items.length * 34 - 16));
+
+  return (
+    <div
+      ref={ref}
+      className="ctx-menu"
+      style={{ left, top }}
+      onContextMenu={(event) => event.preventDefault()}
+    >
+      {items.map((item, index) =>
+        'separator' in item ? (
+          <div key={`sep-${index}`} className="ctx-sep" />
+        ) : (
+          <button
+            key={item.label}
+            type="button"
+            className="ctx-item"
+            data-danger={item.danger || undefined}
+            disabled={item.disabled}
+            onClick={() => {
+              onClose();
+              item.onClick();
+            }}
+          >
+            {item.icon ? <Icon name={item.icon} size={14} /> : <span className="ctx-icon-gap" />}
+            <span>{item.label}</span>
+          </button>
+        ),
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------ 输入弹窗 ------------------------------ */
+
+export function PromptModal({
+  title,
+  label,
+  hint,
+  initial = '',
+  placeholder,
+  confirmText = '确定',
+  danger,
+  onClose,
+  onConfirm,
+}: {
+  title: string;
+  label: string;
+  hint?: string;
+  initial?: string;
+  placeholder?: string;
+  confirmText?: string;
+  danger?: boolean;
+  onClose: () => void;
+  onConfirm: (value: string) => void;
+}) {
+  const [value, setValue] = useState(initial);
+
+  const submit = () => {
+    if (!value.trim()) return;
+    onConfirm(value.trim());
+  };
+
+  return (
+    <Modal
+      title={title}
+      onClose={onClose}
+      width={460}
+      footer={
+        <>
+          <Button onClick={onClose}>取消</Button>
+          <Button variant={danger ? 'danger' : 'primary'} onClick={submit}>
+            {confirmText}
+          </Button>
+        </>
+      }
+    >
+      <Field label={label} hint={hint}>
+        <input
+          className="input"
+          autoFocus
+          value={value}
+          placeholder={placeholder}
+          onChange={(event) => setValue(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              submit();
+            }
+          }}
+        />
+      </Field>
+    </Modal>
+  );
+}
+
+/* ------------------------------ Toast ------------------------------ */type ToastItem = { id: number; message: string; kind: 'info' | 'error' };
 type ToastValue = { show: (message: string, kind?: 'info' | 'error') => void };
 const ToastContext = createContext<ToastValue>({ show: () => {} });
 
