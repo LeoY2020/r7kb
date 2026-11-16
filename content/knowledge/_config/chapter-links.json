@@ -1,14 +1,5 @@
 {
   "links": {
-    "itb-book": {
-      "prerequisites": [],
-      "next": [
-        "ch-01"
-      ],
-      "related": [
-        "ch-05"
-      ]
-    },
     "ch-01": {
       "prerequisites": [],
       "next": [
